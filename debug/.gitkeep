@@ -1,0 +1,5 @@
+# debug/ — Runtime debug outputs (gitignored by parent)
+
+This directory is for one-off debug probes and quick iterations.
+Not tracked in git; use review_samples/ and debug_sessions.jsonl in
+run output directories for auditable output.

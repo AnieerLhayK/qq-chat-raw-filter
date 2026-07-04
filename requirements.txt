@@ -1,0 +1,9 @@
+# QQ Chat raw material filter — dependencies
+#
+# Python 3.11+ standard library only (uses built-in tomllib, json, pathlib, etc.)
+# For Python 3.8–3.10, install tomli as a backport:
+#   pip install tomli
+#
+# No external processing dependencies required.
+# For running tests, pytest is recommended:
+#   pip install pytest

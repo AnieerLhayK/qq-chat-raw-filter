@@ -1,0 +1,88 @@
+[meta]
+config_version = "0.1"
+description = "QQ character skill raw material filter config"
+
+[identity]
+me_ids = []
+me_names = []
+
+[path]
+input_dir = "raw_material/qq/exports/raw/qq-chat-exporter-live"
+output_dir = "raw_material/qq/exports/normalized"
+
+[time]
+session_gap_minutes = 20
+turn_gap_seconds = 90
+my_block_continue_seconds = 180
+
+[interruption]
+light_interruption_chars = 30
+hard_interruption_chars = 100
+max_light_interruptions = 5
+
+[my_block]
+min_my_block_chars = 50
+good_my_block_chars = 120
+min_my_char_ratio = 0.50
+min_my_msg_count = 2
+short_fragment_chars = 3
+max_block_chars = 1200
+max_fragment_count = 120
+
+[message]
+min_isolated_message_chars = 6
+very_short_chars = 3
+max_single_message_chars = 500
+
+[score]
+candidate_min_style_score = 5
+candidate_min_chars_when_style_high = 30
+micro_style_min_style_score = 2
+need_anonymize_min_style_score = 3
+junk_reject_score = 6
+chaos_separate_score = 4
+
+[ratio]
+max_short_fragment_ratio = 0.70
+max_chaos_ratio_for_candidate = 0.30
+max_other_char_ratio_inside_my_block = 0.45
+
+[dedup]
+duplicate_keep_limit = 3
+near_duplicate_enable = false
+
+[output]
+keep_rejected = true
+keep_original_fragments = true
+write_debug_sessions = true
+write_active_config_snapshot = true
+write_human_review_samples = true
+human_review_sample_size = 100
+
+[style_markers]
+analysis = [
+  "我感觉", "其实", "本质上", "主要是", "关键是",
+  "问题是", "不是", "而是", "先别", "没必要", "倒也",
+  "说白了", "这么说", "怎么说呢",
+]
+tone = [
+  "有点抽象", "绷不住", "确实", "离谱", "草", "啊？",
+]
+
+[light_interruption]
+phrases = [
+  "啊？", "为啥", "然后呢", "确实", "？", "细说", "哈哈哈", "什么意思",
+]
+
+[privacy]
+high_risk_words = [
+  "密码", "验证码", "身份证", "银行卡", "token", "api_key", "secret",
+]
+medium_risk_words = [
+  "学校", "学院", "班级", "宿舍", "寝室", "老师",
+  "手机号", "电话", "地址", "学号",
+]
+
+[chaos]
+mild_words = ["草", "绷不住", "抽象", "离谱"]
+strong_words = ["傻逼", "脑残", "滚", "死"]
