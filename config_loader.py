@@ -279,6 +279,11 @@ def snap_config(cfg: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _escape_toml_str(s: str) -> str:
+    """Escape backslashes and double-quotes for a TOML basic string value."""
+    return s.replace("\\", "\\\\").replace('"', '\\"')
+
+
 def _write_toml(lines: List[str], prefix: str, obj: Any) -> None:
     """Helper: recursively write a dict as TOML."""
     if isinstance(obj, dict):
@@ -290,14 +295,17 @@ def _write_toml(lines: List[str], prefix: str, obj: Any) -> None:
                 _write_toml(lines, full_key, val)
             elif isinstance(val, list):
                 items = ", ".join(
-                    f'"{v}"' if isinstance(v, str) else str(v).lower() if isinstance(v, bool) else str(v)
+                    f'"{_escape_toml_str(v)}"'
+                    if isinstance(v, str)
+                    else str(v).lower() if isinstance(v, bool)
+                    else str(v)
                     for v in val
                 )
                 lines.append(f'{key} = [{items}]')
             elif isinstance(val, bool):
                 lines.append(f"{key} = {str(val).lower()}")
             elif isinstance(val, str):
-                lines.append(f'{key} = "{val}"')
+                lines.append(f'{key} = "{_escape_toml_str(val)}"')
             else:
                 lines.append(f"{key} = {val}")
     else:
