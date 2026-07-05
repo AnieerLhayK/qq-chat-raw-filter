@@ -13,21 +13,21 @@ output_dir = "raw_material/qq/exports/normalized"
 [time]
 session_gap_minutes = 20
 turn_gap_seconds = 90
-my_block_continue_seconds = 180
+my_block_continue_seconds = 120
 
 [interruption]
-light_interruption_chars = 30
-hard_interruption_chars = 100
-max_light_interruptions = 5
+light_interruption_chars = 20
+hard_interruption_chars = 90
+max_light_interruptions = 4
 
 [my_block]
-min_my_block_chars = 50
-good_my_block_chars = 120
-min_my_char_ratio = 0.50
+min_my_block_chars = 40
+good_my_block_chars = 100
+min_my_char_ratio = 0.60
 min_my_msg_count = 2
 short_fragment_chars = 3
-max_block_chars = 1200
-max_fragment_count = 120
+max_block_chars = 1000
+max_fragment_count = 90
 
 [message]
 min_isolated_message_chars = 6
@@ -35,17 +35,17 @@ very_short_chars = 3
 max_single_message_chars = 500
 
 [score]
-candidate_min_style_score = 5
-candidate_min_chars_when_style_high = 30
-micro_style_min_style_score = 2
+candidate_min_style_score = 7
+candidate_min_chars_when_style_high = 45
+micro_style_min_style_score = 3
 need_anonymize_min_style_score = 3
-junk_reject_score = 6
-chaos_separate_score = 4
+junk_reject_score = 5
+chaos_separate_score = 3
 
 [ratio]
-max_short_fragment_ratio = 0.70
-max_chaos_ratio_for_candidate = 0.30
-max_other_char_ratio_inside_my_block = 0.45
+max_short_fragment_ratio = 0.60
+max_chaos_ratio_for_candidate = 0.20
+max_other_char_ratio_inside_my_block = 0.30
 
 [dedup]
 duplicate_keep_limit = 3

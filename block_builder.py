@@ -415,10 +415,28 @@ def extract_my_blocks(
                 blocks.append(block)
                 block_counter += 1
             else:
+                # Sub-threshold blocks enter 'rejected' with specific reasons
+                # instead of being silently dropped. This makes rejection
+                # audit-visible in stats.json and rejected.jsonl.
+                sub_reasons = []
+                if current_my_chars < min_chars:
+                    sub_reasons.append(
+                        f"too_few_chars:{current_my_chars}<{min_chars}"
+                    )
+                if total_my_frags < min_msg_count:
+                    sub_reasons.append(
+                        f"too_few_msgs:{total_my_frags}<{min_msg_count}"
+                    )
+                if my_ratio < min_my_ratio:
+                    sub_reasons.append(
+                        f"low_my_ratio:{my_ratio:.2f}<{min_my_ratio}"
+                    )
+                block.reasons = sub_reasons
+                block.bucket = "rejected"
+                blocks.append(block)
+                block_counter += 1
                 warnings.append(
-                    f"{block.block_id}: too short (my_chars={current_my_chars} "
-                    f"< {min_chars} or ratio={my_ratio:.2f} < {min_my_ratio} "
-                    f"or msgs={total_my_frags} < {min_msg_count})"
+                    f"{block.block_id}: sub-threshold ({' | '.join(sub_reasons)})"
                 )
 
             i = j
