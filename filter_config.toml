@@ -85,26 +85,26 @@ chaos_style_ratio_max = 0.10
 # - [lexicon.audit] = frequency audit configuration
 
 [lexicon]
-phrase_bank_path = "workspace/scripts/raw_material_filter/lexicons/phrase_bank.jsonl"
-phrase_candidates_path = "workspace/scripts/raw_material_filter/lexicons/phrase_candidates.jsonl"
-phrase_stoplist_path = "workspace/scripts/raw_material_filter/lexicons/phrase_stoplist.txt"
-privacy_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/privacy_lexicon.jsonl"
-chaos_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/chaos_lexicon.jsonl"
-drop_sentence_words_path = "workspace/scripts/raw_material_filter/lexicons/drop_sentence_words.jsonl"
-mask_words_path = "workspace/scripts/raw_material_filter/lexicons/mask_words.jsonl"
-manual_keep_path = "workspace/scripts/raw_material_filter/lexicons/manual_keep.jsonl"
-manual_drop_path = "workspace/scripts/raw_material_filter/lexicons/manual_drop.jsonl"
+phrase_bank_path = "raw_material/qq/exports/lexicons/phrase_bank.jsonl"
+phrase_candidates_path = "raw_material/qq/exports/lexicons/phrase_candidates.jsonl"
+phrase_stoplist_path = "raw_material/qq/exports/lexicons/phrase_stoplist.txt"
+privacy_lexicon_path = "raw_material/qq/exports/lexicons/privacy_lexicon.jsonl"
+chaos_lexicon_path = "raw_material/qq/exports/lexicons/chaos_lexicon.jsonl"
+drop_sentence_words_path = "raw_material/qq/exports/lexicons/drop_sentence_words.jsonl"
+mask_words_path = "raw_material/qq/exports/lexicons/mask_words.jsonl"
+manual_keep_path = "raw_material/qq/exports/lexicons/manual_keep.jsonl"
+manual_drop_path = "raw_material/qq/exports/lexicons/manual_drop.jsonl"
 
 [lexicon.archive]
-phrase_bank_path = "workspace/scripts/raw_material_filter/lexicons/archive/phrase_bank_archive.jsonl"
-phrase_candidates_path = "workspace/scripts/raw_material_filter/lexicons/archive/phrase_candidates_archive.jsonl"
-phrase_stoplist_path = "workspace/scripts/raw_material_filter/lexicons/archive/phrase_stoplist_archive.txt"
-privacy_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/archive/privacy_lexicon_archive.jsonl"
-chaos_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/archive/chaos_lexicon_archive.jsonl"
-drop_sentence_words_path = "workspace/scripts/raw_material_filter/lexicons/archive/drop_sentence_words_archive.jsonl"
-mask_words_path = "workspace/scripts/raw_material_filter/lexicons/archive/mask_words_archive.jsonl"
-manual_keep_path = "workspace/scripts/raw_material_filter/lexicons/archive/manual_keep_archive.jsonl"
-manual_drop_path = "workspace/scripts/raw_material_filter/lexicons/archive/manual_drop_archive.jsonl"
+phrase_bank_path = "raw_material/qq/exports/lexicons/archive/phrase_bank_archive.jsonl"
+phrase_candidates_path = "raw_material/qq/exports/lexicons/archive/phrase_candidates_archive.jsonl"
+phrase_stoplist_path = "raw_material/qq/exports/lexicons/archive/phrase_stoplist_archive.txt"
+privacy_lexicon_path = "raw_material/qq/exports/lexicons/archive/privacy_lexicon_archive.jsonl"
+chaos_lexicon_path = "raw_material/qq/exports/lexicons/archive/chaos_lexicon_archive.jsonl"
+drop_sentence_words_path = "raw_material/qq/exports/lexicons/archive/drop_sentence_words_archive.jsonl"
+mask_words_path = "raw_material/qq/exports/lexicons/archive/mask_words_archive.jsonl"
+manual_keep_path = "raw_material/qq/exports/lexicons/archive/manual_keep_archive.jsonl"
+manual_drop_path = "raw_material/qq/exports/lexicons/archive/manual_drop_archive.jsonl"
 
 [lexicon.audit]
 enabled = true

@@ -21,7 +21,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-LEXICON_DIR = Path(__file__).resolve().parent / "lexicons"
+LEXICON_DIR = Path("D:/AI/raw_material/qq/exports/lexicons")
 ARCHIVE_DIR = LEXICON_DIR / "archive"
 
 # Map: source filename → (archive filename, old_category factory, enrichment_fields)

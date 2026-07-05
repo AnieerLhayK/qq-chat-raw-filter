@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional, Set
 
 # Default paths
 SCRIPT_DIR = Path(__file__).resolve().parent
-LEXICON_DIR = SCRIPT_DIR / "lexicons"
+LEXICON_DIR = Path("D:/AI/raw_material/qq/exports/lexicons")
 ARCHIVE_DIR = LEXICON_DIR / "archive"
 
 
