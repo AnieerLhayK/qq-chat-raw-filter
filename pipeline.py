@@ -29,6 +29,7 @@ from style_tagger import tag_style
 from review_sampler import write_stratified_samples
 from tuning_advice import generate_tuning_advice
 from phrase_miner import mine_phrases, generate_phrase_report
+from lexicon_auditor import audit_legacy_lexicon
 
 logger = logging.getLogger(__name__)
 
@@ -254,6 +255,53 @@ def stage_tag_style(ctx: Dict[str, Any]) -> StageResult:
     )
 
 
+def stage_audit_legacy_lexicon(ctx: Dict[str, Any]) -> StageResult:
+    """Run frequency audit of archived lexicon terms against classified blocks.
+
+    Only runs if [lexicon.audit].enabled is true.  Requires archive terms
+    to have been loaded by inject_lexicon() at startup.
+    """
+    audit_cfg = ctx["config"].get("lexicon", {}).get("audit", {})
+    if not audit_cfg.get("enabled", True):
+        return StageResult(name="audit_legacy_lexicon", counts={"enabled": 0})
+
+    archive_terms = ctx["config"].get("_archive_terms", [])
+    if not archive_terms:
+        return StageResult(
+            name="audit_legacy_lexicon",
+            counts={"archived_terms_available": 0},
+            warnings=["No archive terms loaded — run archive_lexicons.py first"],
+        )
+
+    blocks = ctx.get("blocks", [])
+    bucketed = ctx.get("buckets", {})
+    cfg = ctx["config"]
+    run_dir = ctx.get("run_dir")
+
+    # Write audit output to phrase_mining/ subdirectory when available
+    audit_run_dir = run_dir
+    if run_dir:
+        pm_dir = run_dir / "phrase_mining"
+        pm_dir.mkdir(exist_ok=True)
+        audit_run_dir = pm_dir
+
+    result = audit_legacy_lexicon(blocks, bucketed, archive_terms, cfg, audit_run_dir)
+    ctx["lexicon_audit"] = result
+
+    stats = result.get("stats", {})
+    return StageResult(
+        name="audit_legacy_lexicon",
+        counts={
+            "terms_audited": stats.get("total_terms_audited", 0),
+            "total_occurrences": stats.get("total_occurrences", 0),
+            "promote_to_active": stats.get("promote_to_active", 0),
+            "keep_as_candidate": stats.get("keep_as_candidate", 0),
+            "demote_or_remove": stats.get("demote_or_remove", 0),
+            "zero_frequency": stats.get("zero_frequency_terms", 0),
+        },
+    )
+
+
 def stage_write_outputs(ctx: Dict[str, Any]) -> StageResult:
     """Write all bucket JSONL files, config snapshot, stats, debug sessions."""
     cfg = ctx["config"]
@@ -454,6 +502,7 @@ PIPELINE = [
     ("deduplicate", stage_deduplicate),
     ("apply_filters", stage_apply_filters),
     ("bucket_decision", stage_bucket_decision),
+    ("audit_legacy_lexicon", stage_audit_legacy_lexicon),
     ("tag_style", stage_tag_style),
     ("mine_phrases", stage_mine_phrases),
     ("write_outputs", stage_write_outputs),

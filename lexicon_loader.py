@@ -192,6 +192,74 @@ def load_lexicons(config: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
+# Archive lexicon loading (v0.3)
+# ---------------------------------------------------------------------------
+def load_archive_terms(config: Dict[str, Any], ai_root: Path) -> List[Dict[str, Any]]:
+    """Load all archived lexicon entries as a flat list for frequency audit.
+
+    Reads from config['lexicon']['archive'] paths. Returns a flat list of
+    dicts, each with at minimum: phrase, source_file, old_category.
+    Does NOT populate shorthand lists — archive is audit-only, never matching.
+
+    Returns empty list if no archive subsection exists.
+    """
+    lex_cfg = config.get("lexicon", {})
+    archive_cfg = lex_cfg.get("archive", {})
+    if not archive_cfg:
+        logger.warning("No [lexicon.archive] section found in config")
+        return []
+
+    entries: List[Dict[str, Any]] = []
+
+    # Map of archive path keys to source file names
+    path_keys = [
+        ("phrase_bank_path", "phrase_bank.jsonl"),
+        ("chaos_lexicon_path", "chaos_lexicon.jsonl"),
+        ("privacy_lexicon_path", "privacy_lexicon.jsonl"),
+        ("drop_sentence_words_path", "drop_sentence_words.jsonl"),
+        ("mask_words_path", "mask_words.jsonl"),
+        ("phrase_candidates_path", "phrase_candidates.jsonl"),
+        ("manual_keep_path", "manual_keep.jsonl"),
+        ("manual_drop_path", "manual_drop.jsonl"),
+    ]
+
+    for config_key, source_name in path_keys:
+        raw = archive_cfg.get(config_key, "")
+        if not raw:
+            continue
+        path = _resolve_path(raw, ai_root)
+        if not path.exists():
+            logger.warning("Archive file not found: %s", path)
+            continue
+
+        file_entries = _load_jsonl(path)
+        for entry in file_entries:
+            entry.setdefault("source_file", source_name)
+            entry.setdefault("old_category", "unknown")
+            entry.setdefault("participates_in_matching", False)
+        entries.extend(file_entries)
+        logger.info("Archive loaded: %d entries from %s", len(file_entries), source_name)
+
+    # Also load stoplist archive
+    raw_stop = archive_cfg.get("phrase_stoplist_path", "")
+    if raw_stop:
+        path_stop = _resolve_path(raw_stop, ai_root)
+        if path_stop.exists():
+            stoplist = _load_stoplist(path_stop)
+            for word in sorted(stoplist):
+                entries.append({
+                    "phrase": word,
+                    "source_file": "phrase_stoplist.txt",
+                    "old_category": "phrase_mining.stoplist",
+                    "participates_in_matching": False,
+                })
+            logger.info("Archive stoplist: %d entries", len(stoplist))
+
+    logger.info("Total archive terms loaded: %d", len(entries))
+    return entries
+
+
+# ---------------------------------------------------------------------------
 # Convenience: inject lexicon into config for downstream use
 # ---------------------------------------------------------------------------
 def inject_lexicon(config: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
@@ -200,7 +268,19 @@ def inject_lexicon(config: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
     Downstream code (scorer, style_tagger) reads config['_lexicon'] instead
     of directly indexing config['style_markers'] / config['chaos'] / etc.
     The original inline lists in TOML are preserved (but deprecated).
+
+    v0.3: Also loads archive terms into config['_archive_terms'] for the
+    frequency audit stage. Archive terms never contribute to active matching
+    shorthand lists.
     """
     lex = load_lexicons(config, ai_root)
     config["_lexicon"] = lex
+
+    # Load archive terms (read-only, audit only)
+    archive_terms = load_archive_terms(config, ai_root)
+    config["_archive_terms"] = archive_terms
+    if archive_terms:
+        logger.info("Archive terms loaded: %d total (audit-only, not for matching)",
+                     len(archive_terms))
+
     return config

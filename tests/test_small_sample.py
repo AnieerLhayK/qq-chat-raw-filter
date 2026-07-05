@@ -33,10 +33,10 @@ def _get_config():
 
 def test_config_loader_defaults():
     cfg = load_config(None)
-    assert cfg["meta"]["config_version"] == "0.1"
+    assert cfg["meta"]["config_version"] == "0.3"
     assert cfg["time"]["session_gap_minutes"] == 20
     assert cfg["my_block"]["min_my_block_chars"] == 50
-    print("  ✓ config_loader defaults OK")
+    print("  OK config_loader defaults OK")
 
 
 def test_config_validation():
@@ -46,7 +46,7 @@ def test_config_validation():
     with pytest.raises(Exception) as exc_info:
         validate_config(bad)
     assert "min_my_char_ratio" in str(exc_info.value)
-    print("  ✓ config_validation rejects bad ratio")
+    print("  OK config_validation rejects bad ratio")
 
 
 def test_parse_qce_file():
@@ -60,7 +60,7 @@ def test_parse_qce_file():
     assert hasattr(first, "sender_uid")
     assert hasattr(first, "sender_name")
     assert isinstance(first.text, str)
-    print(f"  ✓ parse_qce_file: {len(msgs)} msgs from {files[0].name}")
+    print(f"  OK parse_qce_file: {len(msgs)} msgs from {files[0].name}")
 
 
 def test_is_self():
@@ -71,7 +71,7 @@ def test_is_self():
     other = [m for m in msgs if not is_self(m, cfg["identity"]["me_ids"], cfg["identity"]["me_names"])]
     assert len(own) > 0
     assert len(other) > 0
-    print(f"  ✓ is_self: {len(own)} own, {len(other)} other")
+    print(f"  OK is_self: {len(own)} own, {len(other)} other")
 
 
 def test_messages_to_turns():
@@ -82,7 +82,7 @@ def test_messages_to_turns():
     assert len(turns) > 0
     assert len(turns) <= len(msgs)
     assert hasattr(turns[0], "speaker_type")
-    print(f"  ✓ messages_to_turns: {len(turns)} turns from {len(msgs)} msgs")
+    print(f"  OK messages_to_turns: {len(turns)} turns from {len(msgs)} msgs")
 
 
 def test_turns_to_sessions():
@@ -94,7 +94,7 @@ def test_turns_to_sessions():
     assert len(sessions) >= 1
     total = sum(len(s.turns) for s in sessions)
     assert total == len(turns)
-    print(f"  ✓ turns_to_sessions: {len(sessions)} sessions")
+    print(f"  OK turns_to_sessions: {len(sessions)} sessions")
 
 
 def test_extract_my_blocks():
@@ -104,7 +104,7 @@ def test_extract_my_blocks():
     turns, _ = messages_to_turns(msgs, cfg["identity"]["me_ids"], cfg["identity"]["me_names"])
     sessions = turns_to_sessions(turns, str(files[0]))
     blocks, warns = extract_my_blocks(sessions, cfg)
-    print(f"  ✓ extract_my_blocks: {len(blocks)} blocks, warns={len(warns)}")
+    print(f"  OK extract_my_blocks: {len(blocks)} blocks, warns={len(warns)}")
     if blocks:
         b = blocks[0]
         assert b.metrics["my_char_count"] > 0
@@ -119,7 +119,7 @@ def test_scoring():
     sessions = turns_to_sessions(turns, str(files[0]))
     blocks, _ = extract_my_blocks(sessions, cfg)
     if not blocks:
-        print("  ⚠ No blocks to score")
+        print("  WARN: No blocks to score")
         return
     b = blocks[0]
     style = score_style(b, cfg)
@@ -130,7 +130,7 @@ def test_scoring():
     assert 0 <= privacy <= 15
     assert 0 <= junk <= 10
     assert 0 <= chaos <= 10
-    print(f"  ✓ scoring: style={style}, privacy={privacy}, junk={junk}, chaos={chaos}")
+    print(f"  OK scoring: style={style}, privacy={privacy}, junk={junk}, chaos={chaos}")
 
 
 def test_bucket_classify():
@@ -141,14 +141,14 @@ def test_bucket_classify():
     sessions = turns_to_sessions(turns, str(files[0]))
     blocks, _ = extract_my_blocks(sessions, cfg)
     if not blocks:
-        print("  ⚠ No blocks to classify")
+        print("  WARN: No blocks to classify")
         return
     b = blocks[0]
     bucket, reasons = classify_block(b, cfg)
     valid = {"candidates", "micro_style", "need_anonymize", "chaos_style", "rejected"}
     assert bucket in valid
     assert len(reasons) > 0
-    print(f"  ✓ classify: {bucket}, reasons={reasons}")
+    print(f"  OK classify: {bucket}, reasons={reasons}")
 
 
 def test_live_quick_run():
@@ -159,7 +159,7 @@ def test_live_quick_run():
         msgs, _, _ = parse_qce_json(f)
         all_msgs.extend(msgs)
     assert len(all_msgs) > 0
-    print(f"  ✓ live_quick_run: {len(all_msgs)} msgs from {len(files)} files")
+    print(f"  OK live_quick_run: {len(all_msgs)} msgs from {len(files)} files")
 
 
 def run_all():
@@ -182,7 +182,7 @@ def run_all():
             test()
             passed += 1
         except Exception as e:
-            print(f"  ✗ {test.__name__}: {e}")
+            print(f"  FAIL {test.__name__}: {e}")
             import traceback
             traceback.print_exc()
             failed += 1

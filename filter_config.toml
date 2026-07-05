@@ -1,6 +1,6 @@
 [meta]
-config_version = "0.2"
-description = "QQ character skill raw material filter config — lexicon registry mode"
+config_version = "0.3"
+description = "QQ character skill raw material filter config — archive + audit + active lexicon mode"
 
 [identity]
 me_ids = []
@@ -78,6 +78,11 @@ chaos_style_ratio_max = 0.10
 # All paths below are relative to AI_ROOT unless absolute.
 # Missing files are handled gracefully (empty lexicon, warning logged).
 # The phrase_bank.jsonl is the primary style/tone/interruption/store.
+#
+# v0.3: Archive + Active separation
+# - [lexicon] paths = ACTIVE lexicons used in matching (scorer, tagger, filters)
+# - [lexicon.archive] paths = ARCHIVED historical lexicons (read-only, audit only)
+# - [lexicon.audit] = frequency audit configuration
 
 [lexicon]
 phrase_bank_path = "workspace/scripts/raw_material_filter/lexicons/phrase_bank.jsonl"
@@ -89,6 +94,22 @@ drop_sentence_words_path = "workspace/scripts/raw_material_filter/lexicons/drop_
 mask_words_path = "workspace/scripts/raw_material_filter/lexicons/mask_words.jsonl"
 manual_keep_path = "workspace/scripts/raw_material_filter/lexicons/manual_keep.jsonl"
 manual_drop_path = "workspace/scripts/raw_material_filter/lexicons/manual_drop.jsonl"
+
+[lexicon.archive]
+phrase_bank_path = "workspace/scripts/raw_material_filter/lexicons/archive/phrase_bank_archive.jsonl"
+phrase_candidates_path = "workspace/scripts/raw_material_filter/lexicons/archive/phrase_candidates_archive.jsonl"
+phrase_stoplist_path = "workspace/scripts/raw_material_filter/lexicons/archive/phrase_stoplist_archive.txt"
+privacy_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/archive/privacy_lexicon_archive.jsonl"
+chaos_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/archive/chaos_lexicon_archive.jsonl"
+drop_sentence_words_path = "workspace/scripts/raw_material_filter/lexicons/archive/drop_sentence_words_archive.jsonl"
+mask_words_path = "workspace/scripts/raw_material_filter/lexicons/archive/mask_words_archive.jsonl"
+manual_keep_path = "workspace/scripts/raw_material_filter/lexicons/archive/manual_keep_archive.jsonl"
+manual_drop_path = "workspace/scripts/raw_material_filter/lexicons/archive/manual_drop_archive.jsonl"
+
+[lexicon.audit]
+enabled = true
+output_audit_file = true
+output_audit_report = true
 
 # ---------------------------------------------------------------------------
 # Phrase Mining — automatic n-gram discovery

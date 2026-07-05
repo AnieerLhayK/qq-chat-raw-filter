@@ -27,61 +27,87 @@ raw_material_filter/
 ├── style_tagger.py                   # 风格标签
 ├── review_sampler.py                 # 分层采样
 ├── tuning_advice.py                  # 调参建议
-├── lexicon_loader.py                 # 外部词库加载器
+├── lexicon_loader.py                 # 外部词库加载器（active + archive）
+├── lexicon_auditor.py                 # 旧词库频率审计引擎
+├── archive_lexicons.py                # 一次性词库归档脚本
+├── generate_active_lexicon.py         # Active lexicon 重新生成工具
 ├── phrase_miner.py                   # 自动短语发现引擎
 ├── qce_block_filter.py               # 主 CLI 入口
 ├── lexicons/
-│   ├── phrase_bank.jsonl             # 已确认风格短语库
-│   ├── phrase_candidates.jsonl       # 自动发现候选短语(未确认)
-│   ├── phrase_stoplist.txt           # 无意义高频短语黑名单
-│   ├── privacy_lexicon.jsonl         # 隐私风险词库
-│   ├── chaos_lexicon.jsonl           # 抽象/脏话/混乱词库
-│   ├── drop_sentence_words.jsonl     # 整句丢弃触发词
-│   ├── mask_words.jsonl              # 隐私关键词脱敏
-│   ├── manual_keep.jsonl             # 手动保留短语
-│   └── manual_drop.jsonl             # 手动丢弃短语
+│   ├── phrase_bank.jsonl             # 已确认风格短语库（active）
+│   ├── phrase_candidates.jsonl       # 自动发现候选短语（active）
+│   ├── phrase_stoplist.txt           # 无意义高频短语黑名单（active）
+│   ├── privacy_lexicon.jsonl         # 隐私风险词库（active）
+│   ├── chaos_lexicon.jsonl           # 抽象/脏话/混乱词库（active）
+│   ├── drop_sentence_words.jsonl     # 整句丢弃触发词（active）
+│   ├── mask_words.jsonl              # 隐私关键词脱敏（active）
+│   ├── manual_keep.jsonl             # 手动保留短语（active）
+│   ├── manual_drop.jsonl             # 手动丢弃短语（active）
+│   └── archive/                      # 历史词库归档（只读，不参与匹配）
+│       ├── README.md
+│       ├── phrase_bank_archive.jsonl
+│       ├── chaos_lexicon_archive.jsonl
+│       ├── privacy_lexicon_archive.jsonl
+│       ├── drop_sentence_words_archive.jsonl
+│       ├── mask_words_archive.jsonl
+│       ├── phrase_stoplist_archive.txt
+│       ├── manual_keep_archive.jsonl
+│       └── manual_drop_archive.jsonl
 ├── tests/
 │   └── test_small_sample.py          # 轻量测试
 └── debug/
     └── .gitkeep                      # 调试输出目录
 ```
 
-## 架构演进：从 TOML 大词库到注册表模式
+## 架构演进：从 TOML 大词库到 data-driven active lexicon
 
-### 旧方式
+### v0.1: TOML 内联词库
 
-```
-人工先在 TOML 里写一大堆词
-→ Python 扫 raw 数据时检索这些词
-→ 根据命中情况过滤/加分
-```
+人工先在 TOML 里写词 → 扫描时检索 → 过滤/加分。臃肿、难维护。
 
-- TOML 文件臃肿，维护困难
-- 词库越加越大，但可扩展性差
-- 无法自动发现新的风格短语
+### v0.2: 外部 JSONL 注册表
 
-### 新方式
+词库移到 `lexicons/*.jsonl`，TOML 只注册路径。词库仍为人工预设。
+
+### v0.3 (当前): Archive → Audit → Active
 
 ```
-少量基础规则 + raw 数据自动查频
-→ 自动发现候选短语
-→ 输出 phrase_candidates / review 文件
-→ 人工或后续模型确认
-→ 沉淀为外部词库
-→ raw filter 再读取外部词库辅助处理
+旧词库归档 (archive/)
+    ↓
+全量 raw 数据扫描 + 分桶
+    ↓
+频率审计阶段 (audit_legacy_lexicon)
+    ├── 每个旧词在各桶中的出现频率
+    ├── promote / demote / remove 建议
+    └── 输出 legacy_lexicon_frequency_audit.jsonl
+    ↓
+短语自动发现 (phrase_mining)
+    ├── 2~4 字 n-gram + PMI + 左右熵
+    ├── style_keyness / chaos_rate / privacy_rate
+    └── 输出 phrase_candidates.jsonl
+    ↓
+generate_active_lexicon.py
+    ├── 高频验证旧词 → promote to active
+    ├── 高 keyness 新短语 → add to active
+    ├── 低频旧词 → demote to candidates
+    └── 零频旧词 → remove
+    ↓
+Active Lexicon (lexicons/*.jsonl)
+    └── 被真实数据验证过的词库
 ```
 
-**核心原则：词库不应该主要是扫描前的人工输入。词库应该更多是扫描 raw 数据后的产物。**
+**核心原则：词库不是扫描前的主观假设。Active lexicon 只保留被真实数据验证过的词。**
 
 ### 现在 TOML 里有什么
 
-`filter_config.toml` 现在是**配置注册表**，不再包含任何词库：
+`filter_config.toml` 是**配置注册表**（v0.3），不再包含任何词库：
 
 - 所有数值阈值不变（score、ratio、my_block 等）
-- 所有词库路径注册在 `[lexicon]` 段
-- 短语挖掘参数注册在 `[phrase_mining]` 段
-- 全部词库（包括 filter 列表）已移到 `lexicons/` 目录下的外部文件
-- `private_names` / `private_places` 是仅剩的 inline 列表（通常极短）
+- `[lexicon]` — active 词库路径（参与匹配）
+- `[lexicon.archive]` — 归档词库路径（只读，仅用于审计）
+- `[lexicon.audit]` — 频率审计开关
+- `[phrase_mining]` — 短语挖掘参数
+- `private_names` / `private_places` 是仅剩的 inline 列表
 
 ---
 
@@ -178,6 +204,64 @@ phrase_mining/
 └── phrase_mining_report.md        # 可读报告
 ```
 
+### 频率审计输出
+
+每次运行在 `phrase_mining/` 目录下还会生成：
+
+```
+phrase_mining/
+├── ...
+├── legacy_lexicon_frequency_audit.jsonl   # 旧词库频率审计
+└── legacy_lexicon_audit_report.md         # 审计报告（可读）
+```
+
+---
+
+## 词库生命周期：Archive → Audit → Active
+
+### 1. 归档旧词库
+
+```bash
+# 一次性操作：将当前词库归档到 lexicons/archive/
+python archive_lexicons.py
+
+# 强制覆盖已有归档
+python archive_lexicons.py --force
+```
+
+归档后的词库带 `participates_in_matching: false`，永远不参与匹配。
+
+### 2. 运行 Pipeline（含频率审计）
+
+每次运行 pipeline 时，`audit_legacy_lexicon` 阶段会自动：
+- 扫描每个归档词在真实数据中各分桶的出现频率
+- 生成 promote / demote / remove 建议
+- 输出 `legacy_lexicon_frequency_audit.jsonl` 和审计报告
+
+审计报告在 `phrase_mining/legacy_lexicon_audit_report.md`。
+
+### 3. 重新生成 Active Lexicon
+
+```bash
+# 预览（不覆盖现有词库）
+python generate_active_lexicon.py --audit run_xxx/phrase_mining/legacy_lexicon_frequency_audit.jsonl
+
+# 实际覆盖 active lexicons
+python generate_active_lexicon.py --audit <path> --force
+```
+
+生成逻辑：
+- 高频验证旧词 → 进入 active lexicon
+- 高 keyness 新短语（来自 phrase mining）→ 进入 active lexicon
+- 低频旧词 → 降级到 `phrase_candidates.jsonl`
+- 零频旧词 → 移到 `lexicon_removed_or_demoted.jsonl`
+- 隐私词 → 留在 `privacy_lexicon.jsonl`（不进入 style active）
+- 强攻击词 → 留在 `chaos_lexicon.jsonl`（隔离）
+
+### 4. 迭代
+
+随着更多数据被处理，频率审计结果会更准确。定期重复步骤 2-3 以持续优化 active lexicon。
+
 ---
 
 ## 输入 / 输出路径
@@ -252,7 +336,7 @@ pipeline_trace.json       # 各阶段执行跟踪
 debug_sessions.jsonl      # 调试信息
 review_samples/           # 人工审核样本（6个分层文件）
 tuning_advice.md          # 调参建议
-phrase_mining/            # 短语挖掘结果（详见上方）
+phrase_mining/            # 短语挖掘结果 + 词库审计（详见上方）
 ```
 
 ---
@@ -339,7 +423,8 @@ message → turn → session → my_block → score → bucket → mine_phrases
 3. **发言块**：以我的 turn 为核心，允许短插话不打断
 4. **评分**：style / privacy / junk / chaos
 5. **分桶**：根据评分阈值分类
-6. **短语挖掘**：自动发现 2~4 字短语，计算 PMI/entropy/keyness
+6. **词库审计**：统计归档词在各桶中的真实频率（v0.3）
+7. **短语挖掘**：自动发现 2~4 字短语，计算 PMI/entropy/keyness
 
 ---
 

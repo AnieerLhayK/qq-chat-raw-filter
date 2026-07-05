@@ -52,6 +52,35 @@ def _check_int(val: Any, name: str) -> None:
         raise ConfigValidationError(f"{name}: expected int, got {type(val).__name__}")
 
 
+def _validate_lexicon_subsection(
+    section: Dict[str, Any], prefix: str, errors: List[str]
+) -> None:
+    """Validate a lexicon sub-section (archive, active, candidates)."""
+    valid_path_keys = {
+        "phrase_bank_path", "phrase_candidates_path", "phrase_stoplist_path",
+        "privacy_lexicon_path", "chaos_lexicon_path",
+        "drop_sentence_words_path", "mask_words_path",
+        "manual_keep_path", "manual_drop_path",
+    }
+    for k, v in section.items():
+        if k not in valid_path_keys:
+            errors.append(f"{prefix}.{k}: unknown key")
+        elif not isinstance(v, str):
+            errors.append(f"{prefix}.{k}: expected string path")
+
+
+def _validate_audit_subsection(
+    section: Dict[str, Any], errors: List[str]
+) -> None:
+    """Validate [lexicon.audit] subsection."""
+    for k, v in section.items():
+        if k in ("enabled", "output_audit_file", "output_audit_report"):
+            if not isinstance(v, bool):
+                errors.append(f"lexicon.audit.{k}: expected bool")
+        else:
+            errors.append(f"lexicon.audit.{k}: unknown key")
+
+
 def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     """Validate configuration dict in-place, returning it for chaining."""
     errors: List[str] = []
@@ -175,7 +204,7 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
             if k in st and not isinstance(st[k], list):
                 errors.append(f"style_tags.{k}: expected list")
 
-    # --- lexicon (new in v0.2) ---
+    # --- lexicon (v0.3: archive + audit subsections added) ---
     if "lexicon" in cfg:
         lex = cfg["lexicon"]
         valid_keys = {
@@ -183,11 +212,17 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
             "privacy_lexicon_path", "chaos_lexicon_path",
             "drop_sentence_words_path", "mask_words_path",
             "manual_keep_path", "manual_drop_path",
+            "archive", "audit",
         }
         for k in lex:
             if k not in valid_keys:
-                errors.append(f"lexicon.{k}: unknown key")
-            if not isinstance(lex[k], str):
+                if k not in ("archive", "audit"):
+                    errors.append(f"lexicon.{k}: unknown key")
+            elif k == "archive":
+                _validate_lexicon_subsection(lex["archive"], "lexicon.archive", errors)
+            elif k == "audit":
+                _validate_audit_subsection(lex["audit"], errors)
+            elif not isinstance(lex[k], str):
                 errors.append(f"lexicon.{k}: expected string path")
 
     # --- phrase_mining (new in v0.2) ---
@@ -234,7 +269,7 @@ def default_config() -> Dict[str, Any]:
     """Return a complete default configuration dict."""
     return {
         "meta": {
-            "config_version": "0.2",
+            "config_version": "0.3",
             "description": "QQ character skill raw material filter config — lexicon registry mode",
         },
         "identity": {"me_ids": [], "me_names": []},
@@ -320,6 +355,7 @@ def default_config() -> Dict[str, Any]:
             "chaos_style_ratio_max": 0.10,
         },
         "lexicon": {
+            # Active lexicon paths (v0.3: used in matching)
             "phrase_bank_path": "workspace/scripts/raw_material_filter/lexicons/phrase_bank.jsonl",
             "phrase_candidates_path": "workspace/scripts/raw_material_filter/lexicons/phrase_candidates.jsonl",
             "phrase_stoplist_path": "workspace/scripts/raw_material_filter/lexicons/phrase_stoplist.txt",
@@ -329,6 +365,24 @@ def default_config() -> Dict[str, Any]:
             "mask_words_path": "workspace/scripts/raw_material_filter/lexicons/mask_words.jsonl",
             "manual_keep_path": "workspace/scripts/raw_material_filter/lexicons/manual_keep.jsonl",
             "manual_drop_path": "workspace/scripts/raw_material_filter/lexicons/manual_drop.jsonl",
+            # Archive paths (v0.3: read-only, audit only, never used for matching)
+            "archive": {
+                "phrase_bank_path": "workspace/scripts/raw_material_filter/lexicons/archive/phrase_bank_archive.jsonl",
+                "phrase_candidates_path": "workspace/scripts/raw_material_filter/lexicons/archive/phrase_candidates_archive.jsonl",
+                "phrase_stoplist_path": "workspace/scripts/raw_material_filter/lexicons/archive/phrase_stoplist_archive.txt",
+                "privacy_lexicon_path": "workspace/scripts/raw_material_filter/lexicons/archive/privacy_lexicon_archive.jsonl",
+                "chaos_lexicon_path": "workspace/scripts/raw_material_filter/lexicons/archive/chaos_lexicon_archive.jsonl",
+                "drop_sentence_words_path": "workspace/scripts/raw_material_filter/lexicons/archive/drop_sentence_words_archive.jsonl",
+                "mask_words_path": "workspace/scripts/raw_material_filter/lexicons/archive/mask_words_archive.jsonl",
+                "manual_keep_path": "workspace/scripts/raw_material_filter/lexicons/archive/manual_keep_archive.jsonl",
+                "manual_drop_path": "workspace/scripts/raw_material_filter/lexicons/archive/manual_drop_archive.jsonl",
+            },
+            # Audit configuration (v0.3)
+            "audit": {
+                "enabled": True,
+                "output_audit_file": True,
+                "output_audit_report": True,
+            },
         },
         "phrase_mining": {
             "enabled": True,
@@ -383,16 +437,27 @@ def resolve_paths(cfg: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
                 else:
                     cfg["path"][key] = str(p)
 
-    # Resolve lexicon paths
+    # Resolve lexicon paths (both active and archive subsections)
     if "lexicon" in cfg:
         for key in list(cfg["lexicon"].keys()):
-            raw = cfg["lexicon"][key]
-            if raw and isinstance(raw, str):
-                p = Path(raw)
+            val = cfg["lexicon"][key]
+            if isinstance(val, dict):
+                # Handle nested subsections (archive, audit)
+                for sub_key in list(val.keys()):
+                    raw = val[sub_key]
+                    if raw and isinstance(raw, str):
+                        p = Path(raw)
+                        if not p.is_absolute():
+                            val[sub_key] = str(ai_root / p)
+                        else:
+                            val[sub_key] = str(p)
+            elif isinstance(val, str):
+                # Handle flat keys (active paths and backward compat)
+                p = Path(val)
                 if not p.is_absolute():
                     cfg["lexicon"][key] = str(ai_root / p)
                 else:
-                    cfg["lexicon"][key] = str(p)
+                    cfg["lexicon"][key] = str(val)
 
     return cfg
 
