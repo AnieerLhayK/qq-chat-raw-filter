@@ -41,6 +41,8 @@ micro_style_min_style_score = 2
 need_anonymize_min_style_score = 3
 junk_reject_score = 5
 chaos_separate_score = 2
+debatable_min_style_score = 4
+debatable_max_per_run = 200
 
 [ratio]
 max_short_fragment_ratio = 0.60
@@ -50,6 +52,7 @@ max_other_char_ratio_inside_my_block = 0.30
 [dedup]
 duplicate_keep_limit = 3
 near_duplicate_enable = false
+near_duplicate_threshold = 0.85
 
 [output]
 keep_rejected = true
@@ -74,7 +77,24 @@ phrases = [
   "啊？", "为啥", "然后呢", "确实", "？", "细说", "哈哈哈", "什么意思",
 ]
 
+[filter]
+drop_sentence_words = [
+  # Entire block dropped if my_text contains any of these
+  "进群", "加我", "加群",
+]
+mask_words = [
+  # Within my_text, replace with [MASKED] before writing output
+  "微信号", "手机号",
+]
+private_names = [
+  # Real names to mask — fill in actual names
+]
+private_places = [
+  # Place names to mask — fill in actual places
+]
+
 [privacy]
+mode = "balanced"   # strict | balanced | recall
 high_risk_words = [
   "密码", "验证码", "身份证", "银行卡", "token", "api_key", "secret",
 ]
@@ -102,3 +122,18 @@ strong_words = [
   "傻逼", "脑残", "滚",
   "有病", "恶心", "废物", "闭嘴",
 ]
+
+[debatable]
+enable = true
+max_per_run = 200
+
+[style_tags]
+enable = true
+argument_markers = ["但是", "不过", "然而", "其实", "话说", "反过来"]
+analysis_markers = ["我感觉", "我认为", "我觉得", "本质上", "说白了", "这么说"]
+
+[tuning_advice]
+enable = true
+candidate_ratio_target_min = 0.05
+candidate_ratio_target_max = 0.12
+chaos_style_ratio_max = 0.10

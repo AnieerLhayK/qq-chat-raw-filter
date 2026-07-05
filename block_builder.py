@@ -106,7 +106,7 @@ class MyBlock:
         "my_turns", "other_turns",
         "my_text", "context", "fragments",
         "metrics", "scores", "reasons",
-        "bucket", "source_file",
+        "bucket", "source_file", "style_tags",
     )
 
     def __init__(self, block_id: str = "", session_id: str = "", source_file: str = ""):
@@ -121,6 +121,7 @@ class MyBlock:
         self.scores: Dict[str, float] = {}
         self.reasons: List[str] = []
         self.bucket = ""
+        self.style_tags: List[str] = []
         self.source_file = source_file
 
     @staticmethod
@@ -145,6 +146,7 @@ class MyBlock:
             "metrics": self.metrics,
             "scores": self.scores,
             "reasons": self.reasons,
+            "style_tags": self.style_tags,
         }
 
 

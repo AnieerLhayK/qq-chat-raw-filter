@@ -106,6 +106,8 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         _check_non_negative(sc.get("need_anonymize_min_style_score", 3), "score.need_anonymize_min_style_score")
         _check_non_negative(sc.get("junk_reject_score", 6), "score.junk_reject_score")
         _check_non_negative(sc.get("chaos_separate_score", 4), "score.chaos_separate_score")
+        _check_non_negative(sc.get("debatable_min_style_score", 4), "score.debatable_min_style_score")
+        _check_non_negative(sc.get("debatable_max_per_run", 200), "score.debatable_max_per_run")
 
     # --- ratio ---
     if "ratio" in cfg:
@@ -128,8 +130,56 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
             if k in out and not isinstance(out[k], bool):
                 errors.append(f"output.{k}: expected bool")
 
-    # --- style_markers / chaos lists ---
-    for list_key in ("style_markers", "chaos", "privacy", "light_interruption"):
+    # --- filter ---
+    if "filter" in cfg:
+        flt = cfg["filter"]
+        for k in ("drop_sentence_words", "mask_words", "private_names", "private_places"):
+            if k in flt and not isinstance(flt[k], list):
+                errors.append(f"filter.{k}: expected list")
+            if k in flt:
+                for item in flt[k]:
+                    if not isinstance(item, str):
+                        errors.append(f"filter.{k}: expected list of strings")
+
+    # --- filter ---
+    if "privacy" in cfg:
+        p = cfg["privacy"]
+        mode = p.get("mode", "balanced")
+        if mode not in ("strict", "balanced", "recall"):
+            errors.append(f"privacy.mode: expected 'strict', 'balanced', or 'recall', got '{mode}'")
+
+    # --- debatable ---
+    if "debatable" in cfg:
+        d = cfg["debatable"]
+        if "enable" in d and not isinstance(d["enable"], bool):
+            errors.append("debatable.enable: expected bool")
+        if "max_per_run" in d and not isinstance(d["max_per_run"], int):
+            errors.append("debatable.max_per_run: expected int")
+
+    # --- style_tags ---
+    if "style_tags" in cfg:
+        st = cfg["style_tags"]
+        if "enable" in st and not isinstance(st["enable"], bool):
+            errors.append("style_tags.enable: expected bool")
+        for k in ("argument_markers", "analysis_markers"):
+            if k in st and not isinstance(st[k], list):
+                errors.append(f"style_tags.{k}: expected list")
+            if k in st:
+                for item in st[k]:
+                    if not isinstance(item, str):
+                        errors.append(f"style_tags.{k}: expected list of strings")
+
+    # --- tuning_advice ---
+    if "tuning_advice" in cfg:
+        ta = cfg["tuning_advice"]
+        if "enable" in ta and not isinstance(ta["enable"], bool):
+            errors.append("tuning_advice.enable: expected bool")
+        for k in ("candidate_ratio_target_min", "candidate_ratio_target_max", "chaos_style_ratio_max"):
+            if k in ta and not isinstance(ta[k], (int, float)):
+                errors.append(f"tuning_advice.{k}: expected number")
+
+    # --- style_markers / chaos / filter lists ---
+    for list_key in ("style_markers", "chaos", "privacy", "light_interruption", "filter", "style_tags"):
         section = cfg.get(list_key, {})
         for sub_key in section:
             if isinstance(section[sub_key], list):
@@ -185,6 +235,8 @@ def default_config() -> Dict[str, Any]:
             "need_anonymize_min_style_score": 3,
             "junk_reject_score": 6,
             "chaos_separate_score": 4,
+            "debatable_min_style_score": 4,
+            "debatable_max_per_run": 200,
         },
         "ratio": {
             "max_short_fragment_ratio": 0.70,
@@ -194,6 +246,7 @@ def default_config() -> Dict[str, Any]:
         "dedup": {
             "duplicate_keep_limit": 3,
             "near_duplicate_enable": False,
+            "near_duplicate_threshold": 0.85,
         },
         "output": {
             "keep_rejected": True,
@@ -218,7 +271,12 @@ def default_config() -> Dict[str, Any]:
                 "啊？", "为啥", "然后呢", "确实", "？", "细说", "哈哈哈", "什么意思",
             ],
         },
+        "chaos": {
+            "mild_words": ["草", "绷不住", "抽象", "离谱"],
+            "strong_words": ["傻逼", "脑残", "滚", "死"],
+        },
         "privacy": {
+            "mode": "balanced",
             "high_risk_words": [
                 "密码", "验证码", "身份证", "银行卡", "token", "api_key", "secret",
             ],
@@ -227,9 +285,26 @@ def default_config() -> Dict[str, Any]:
                 "电话", "地址", "学号",
             ],
         },
-        "chaos": {
-            "mild_words": ["草", "绷不住", "抽象", "离谱"],
-            "strong_words": ["傻逼", "脑残", "滚", "死"],
+        "filter": {
+            "drop_sentence_words": [],
+            "mask_words": [],
+            "private_names": [],
+            "private_places": [],
+        },
+        "debatable": {
+            "enable": True,
+            "max_per_run": 200,
+        },
+        "style_tags": {
+            "enable": True,
+            "argument_markers": ["但是", "不过", "然而", "其实", "话说", "反过来"],
+            "analysis_markers": ["我感觉", "我认为", "我觉得", "本质上", "说白了", "这么说"],
+        },
+        "tuning_advice": {
+            "enable": True,
+            "candidate_ratio_target_min": 0.05,
+            "candidate_ratio_target_max": 0.12,
+            "chaos_style_ratio_max": 0.10,
         },
     }
 

@@ -6,6 +6,7 @@ Buckets:
   micro_style    — Short style fragments (tone words, short expressions)
   need_anonymize — Has style value but contains privacy-sensitive content
   chaos_style    — Abstract/complaint/abusive style, not fit for candidates
+  debatable      — Uncertain cases: has style but fails a quality gate softly
   rejected       — Junk, system noise, low-information content
 """
 
@@ -38,6 +39,10 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
     junk = scores["junk_score"]
     chaos = scores["chaos_score"]
 
+    # 0. Pre-assigned bucket (e.g. from dedup or filter stages)
+    if block.bucket:
+        return block.bucket, block.reasons
+
     # 1. High privacy
     if privacy >= 8:
         if style >= sc.get("need_anonymize_min_style_score", 3):
@@ -50,7 +55,7 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
 
     # 2. High junk
     if junk >= sc.get("junk_reject_score", 6):
-        reasons.append(f"junk_score_too_high:{junk}")
+        reasons.append(f"junk_score_too_higher:{junk}")
         block.bucket = "rejected"
         return "rejected", reasons
 
@@ -79,22 +84,35 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
     if style >= sc.get("candidate_min_style_score", 5):
         char_count = block.metrics.get("my_char_count", 0)
         if char_count >= sc.get("candidate_min_chars_when_style_high", 30):
-            # Quality gates: reject candidates with elevated chaos, junk,
-            # or low my-speaker ratio. Each gate has its own reason so
-            # top_reject_reasons in stats.json is actionable.
-            if chaos >= 2:
-                reasons.append(f"candidate_chaotic:{chaos}")
-                block.bucket = "rejected"
-                return "rejected", reasons
-            if junk >= 3:
-                reasons.append(f"candidate_junky:{junk}")
-                block.bucket = "rejected"
-                return "rejected", reasons
+            # Quality gates
             my_ratio = block.metrics.get("my_char_ratio", 0)
+
+            # Collect which gates would fail
+            gate_failures = []
+            if chaos >= 2:
+                gate_failures.append("chaos")
+            if junk >= 3:
+                gate_failures.append("junk")
             if my_ratio < 0.55:
-                reasons.append(f"candidate_low_ratio:{my_ratio:.2f}")
+                gate_failures.append("ratio")
+
+            if gate_failures:
+                # 5a. Debatable — has style but fails a gate softly
+                debatable_enabled = config.get("debatable", {}).get("enable", True)
+                if debatable_enabled and style >= sc.get("debatable_min_style_score", 4):
+                    reasons.append(f"debatable_gate_failures:{','.join(gate_failures)}")
+                    block.bucket = "debatable"
+                    return "debatable", reasons
+                # 5b. Otherwise reject with specific reason
+                if chaos >= 2:
+                    reasons.append(f"candidate_chaotic:{chaos}")
+                elif junk >= 3:
+                    reasons.append(f"candidate_junky:{junk}")
+                else:
+                    reasons.append(f"candidate_low_ratio:{my_ratio:.2f}")
                 block.bucket = "rejected"
                 return "rejected", reasons
+
             reasons.append("high_style_score")
             block.bucket = "candidates"
             return "candidates", reasons
@@ -135,8 +153,13 @@ def classify_all(blocks: List[MyBlock], config: Dict[str, Any]) -> Dict[str, Lis
         "micro_style": [],
         "need_anonymize": [],
         "chaos_style": [],
+        "debatable": [],
         "rejected": [],
     }
+
+    # Cap debatable bucket
+    debatable_max = config.get("score", {}).get("debatable_max_per_run", 200)
+    debatable_count = 0
 
     for block in blocks:
         # Blocks pre-classified upstream (e.g. sub-threshold blocks from
@@ -150,6 +173,17 @@ def classify_all(blocks: List[MyBlock], config: Dict[str, Any]) -> Dict[str, Lis
 
         bucket, reasons = classify_block(block, config)
         block.reasons = reasons
+
+        # Enforce debatable cap
+        if bucket == "debatable":
+            if debatable_count >= debatable_max:
+                bucket = "rejected"
+                reasons.append("debatable_capped")
+                block.bucket = "rejected"
+                buckets["rejected"].append(block)
+                continue
+            debatable_count += 1
+
         if bucket in buckets:
             buckets[bucket].append(block)
         else:
