@@ -1,6 +1,6 @@
 [meta]
-config_version = "0.1"
-description = "QQ character skill raw material filter config"
+config_version = "0.2"
+description = "QQ character skill raw material filter config — lexicon registry mode"
 
 [identity]
 me_ids = []
@@ -62,78 +62,111 @@ write_active_config_snapshot = true
 write_human_review_samples = true
 human_review_sample_size = 100
 
-[style_markers]
-analysis = [
-  "我感觉", "其实", "本质上", "主要是", "关键是",
-  "问题是", "不是", "而是", "先别", "没必要", "倒也",
-  "说白了", "这么说", "怎么说呢",
-]
-tone = [
-  "有点抽象", "绷不住", "确实", "离谱", "草", "啊？",
-]
-
-[light_interruption]
-phrases = [
-  "啊？", "为啥", "然后呢", "确实", "？", "细说", "哈哈哈", "什么意思",
-]
-
-[filter]
-drop_sentence_words = [
-  # Entire block dropped if my_text contains any of these
-  "进群", "加我", "加群",
-]
-mask_words = [
-  # Within my_text, replace with [MASKED] before writing output
-  "微信号", "手机号",
-]
-private_names = [
-  # Real names to mask — fill in actual names
-]
-private_places = [
-  # Place names to mask — fill in actual places
-]
-
-[privacy]
-mode = "balanced"   # strict | balanced | recall
-high_risk_words = [
-  "密码", "验证码", "身份证", "银行卡", "token", "api_key", "secret",
-]
-medium_risk_words = [
-  "学校", "学院", "班级", "宿舍", "寝室", "老师",
-  "手机号", "电话", "地址", "学号",
-]
-
-[chaos]
-mild_words = [
-  # Original
-  "草", "绷不住", "抽象", "离谱",
-  # User's chat patterns — minced oaths
-  "byd", "md", "tmd",
-  # User's chat patterns — complaint/venting
-  "烦死了", "累死了", "困死了", "气死了", "笑死了",
-  "我要吐了", "受不了",
-  # User's chat patterns — oral slang
-  "难绷", "逆天", "包的", "无敌了", "没救了",
-  # Common internet oral expressions (2025-2026)
-  "哈人", "破防", "无语", "绝了", "完了",
-  "尊嘟假嘟", "那咋了", "6",
-]
-strong_words = [
-  "傻逼", "脑残", "滚",
-  "有病", "恶心", "废物", "闭嘴",
-]
-
 [debatable]
 enable = true
 max_per_run = 200
-
-[style_tags]
-enable = true
-argument_markers = ["但是", "不过", "然而", "其实", "话说", "反过来"]
-analysis_markers = ["我感觉", "我认为", "我觉得", "本质上", "说白了", "这么说"]
 
 [tuning_advice]
 enable = true
 candidate_ratio_target_min = 0.05
 candidate_ratio_target_max = 0.12
 chaos_style_ratio_max = 0.10
+
+# ---------------------------------------------------------------------------
+# Lexicon Registry — TOML now registers paths instead of holding large lists
+# ---------------------------------------------------------------------------
+# All paths below are relative to AI_ROOT unless absolute.
+# Missing files are handled gracefully (empty lexicon, warning logged).
+# The phrase_bank.jsonl is the primary style/tone/interruption/store.
+
+[lexicon]
+phrase_bank_path = "workspace/scripts/raw_material_filter/lexicons/phrase_bank.jsonl"
+phrase_candidates_path = "workspace/scripts/raw_material_filter/lexicons/phrase_candidates.jsonl"
+phrase_stoplist_path = "workspace/scripts/raw_material_filter/lexicons/phrase_stoplist.txt"
+privacy_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/privacy_lexicon.jsonl"
+chaos_lexicon_path = "workspace/scripts/raw_material_filter/lexicons/chaos_lexicon.jsonl"
+drop_sentence_words_path = "workspace/scripts/raw_material_filter/lexicons/drop_sentence_words.jsonl"
+mask_words_path = "workspace/scripts/raw_material_filter/lexicons/mask_words.jsonl"
+manual_keep_path = "workspace/scripts/raw_material_filter/lexicons/manual_keep.jsonl"
+manual_drop_path = "workspace/scripts/raw_material_filter/lexicons/manual_drop.jsonl"
+
+# ---------------------------------------------------------------------------
+# Phrase Mining — automatic n-gram discovery
+# ---------------------------------------------------------------------------
+
+[phrase_mining]
+enabled = true
+min_n = 2
+max_n = 4
+min_freq = 5
+min_pmi_2gram = 2.0
+min_pmi_3gram = 3.0
+min_pmi_4gram = 4.0
+min_entropy = 0.5
+top_k_each_length = 500
+scan_sources = ["my_text", "fragments", "my_blocks"]
+
+[phrase_mining.bucket_weight]
+candidates = 1.0
+micro_style = 1.2
+chaos_style = 0.5
+need_anonymize = 0.4
+rejected = -0.5
+
+[phrase_mining.keyness]
+enabled = true
+compare_candidates_against_rejected = true
+min_keyness = 1.5
+
+[phrase_mining.output]
+write_phrase_freq_by_length = true
+write_phrase_candidates = true
+write_phrase_report = true
+update_auto_phrase_candidates = true
+update_phrase_bank = false
+
+# ---------------------------------------------------------------------------
+# Inline filter lists — migrated to lexicons/ in v0.2
+# ---------------------------------------------------------------------------
+# drop_sentence_words → lexicons/drop_sentence_words.jsonl
+# mask_words          → lexicons/mask_words.jsonl
+# private_names / private_places are small enough to keep inline.
+
+[filter]
+drop_sentence_words = []
+mask_words = []
+private_names = []
+private_places = []
+
+# ---------------------------------------------------------------------------
+# Privacy mode — word lists migrated to privacy_lexicon.jsonl
+# inline lists below are DEPRECATED but kept as fallback
+# ---------------------------------------------------------------------------
+
+[privacy]
+mode = "balanced"
+
+# ---------------------------------------------------------------------------
+# Deprecated inline sections — kept for fallback compatibility
+# These are empty in v0.2; the actual word lists are in the lexicon files.
+# TODO: remove entirely in a future version.
+# ---------------------------------------------------------------------------
+
+[style_markers]
+analysis = []
+tone = []
+
+[light_interruption]
+phrases = []
+
+[style_tags]
+enable = true
+argument_markers = []
+analysis_markers = []
+
+[chaos]
+mild_words = []
+strong_words = []
+
+# Privacy word lists also empty — data moved to privacy_lexicon.jsonl
+# privacy.high_risk_words and medium_risk_words are read from there.

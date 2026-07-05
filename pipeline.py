@@ -28,6 +28,7 @@ from privacy_filter import filter_privacy_blocks
 from style_tagger import tag_style
 from review_sampler import write_stratified_samples
 from tuning_advice import generate_tuning_advice
+from phrase_miner import mine_phrases, generate_phrase_report
 
 logger = logging.getLogger(__name__)
 
@@ -197,13 +198,23 @@ def stage_deduplicate(ctx: Dict[str, Any]) -> StageResult:
 
 
 def stage_apply_filters(ctx: Dict[str, Any]) -> StageResult:
-    """Apply drop_sentence_words and mask_words from config."""
+    """Apply drop_sentence_words and mask_words from config (lexicon-first)."""
     blocks = ctx.get("blocks", [])
     cfg = ctx["config"]
+    lex = cfg.get("_lexicon", {})
+
+    # Lexicon-first with TOML fallback
+    if lex and lex.get("drop_sentence_phrases"):
+        drop_words = lex["drop_sentence_phrases"]
+    else:
+        drop_words = cfg.get("filter", {}).get("drop_sentence_words", [])
+
+    if lex and lex.get("mask_phrases"):
+        mask_words = lex["mask_phrases"]
+    else:
+        mask_words = cfg.get("filter", {}).get("mask_words", [])
 
     f_cfg = cfg.get("filter", {})
-    drop_words = f_cfg.get("drop_sentence_words", [])
-    mask_words = f_cfg.get("mask_words", [])
     priv_names = f_cfg.get("private_names", [])
     priv_places = f_cfg.get("private_places", [])
 
@@ -330,6 +341,103 @@ def stage_write_review_samples(ctx: Dict[str, Any]) -> StageResult:
     )
 
 
+def stage_mine_phrases(ctx: Dict[str, Any]) -> StageResult:
+    """Run phrase mining on all blocks to discover 2-4 char n-gram candidates.
+
+    Uses the bucket classification from the bucket_decision stage to compute
+    bucket-aware metrics (style_keyness, chaos_rate, privacy_bucket_rate).
+    Writes review files and a human-readable report to the run directory.
+    """
+    blocks = ctx.get("blocks", [])
+    bucketed = ctx.get("buckets", {})
+    cfg = ctx["config"]
+    lexicon = cfg.get("_lexicon", {})
+    run_dir = ctx.get("run_dir")
+
+    pm_cfg = cfg.get("phrase_mining", {})
+    if not pm_cfg.get("enabled", False):
+        return StageResult(name="mine_phrases", counts={"enabled": 0})
+
+    mining_result = mine_phrases(blocks, bucketed, cfg, lexicon)
+    ctx["phrase_mining"] = mining_result
+    stats = mining_result.get("stats", {})
+
+    # Write output files if we have a run_dir
+    if run_dir:
+        pm_dir = run_dir / "phrase_mining"
+        pm_dir.mkdir(exist_ok=True)
+
+        # Write per-length frequency files
+        out_cfg = pm_cfg.get("output", {})
+        if out_cfg.get("write_phrase_freq_by_length", True):
+            for n, key in [(2, "phrase_freq_2gram"), (3, "phrase_freq_3gram"), (4, "phrase_freq_4gram")]:
+                entries = mining_result.get(key, [])
+                if entries:
+                    _write_jsonl(entries, pm_dir / f"phrase_freq_{n}gram.jsonl")
+
+        # Write phrase candidates
+        if out_cfg.get("write_phrase_candidates", True):
+            candidates = mining_result.get("phrase_candidates", [])
+            if candidates:
+                _write_jsonl(candidates, pm_dir / "phrase_candidates.jsonl")
+
+        # Write review files
+        for name in ("review_phrases_top", "review_privacy_terms", "review_chaos_terms", "review_stopword_candidates"):
+            entries = mining_result.get(name, [])
+            if entries:
+                _write_jsonl(entries, pm_dir / f"{name}.jsonl")
+
+        # Write stats
+        with (pm_dir / "phrase_mining_stats.json").open("w", encoding="utf-8") as f:
+            json.dump(stats, f, ensure_ascii=False, indent=2)
+
+        # Write report
+        if out_cfg.get("write_phrase_report", True):
+            generate_phrase_report(mining_result, cfg, pm_dir)
+
+        # Update auto_phrase_candidates in lexicon directory
+        if out_cfg.get("update_auto_phrase_candidates", True):
+            candidates = mining_result.get("phrase_candidates", [])
+            if candidates:
+                lex_cfg = cfg.get("lexicon", {})
+                auto_path = lex_cfg.get("phrase_candidates_path", "")
+                if auto_path:
+                    ap = Path(auto_path)
+                    if ap.parent.exists():
+                        # Merge: don't overwrite, append new ones
+                        existing_phrases = set()
+                        if ap.exists():
+                            with ap.open("r", encoding="utf-8") as f:
+                                for line in f:
+                                    line = line.strip()
+                                    if line:
+                                        try:
+                                            entry = json.loads(line)
+                                            existing_phrases.add(entry.get("phrase", ""))
+                                        except json.JSONDecodeError:
+                                            pass
+                        new_count = 0
+                        with ap.open("a", encoding="utf-8") as f:
+                            for c in candidates:
+                                if c.get("phrase") not in existing_phrases:
+                                    c["status"] = "auto_candidate"
+                                    f.write(json.dumps(c, ensure_ascii=False) + "\n")
+                                    new_count += 1
+                        logger.info("Phrase mining: appended %d new candidates to %s", new_count, ap)
+                        stats["new_candidates_appended"] = new_count
+
+    return StageResult(
+        name="mine_phrases",
+        counts={
+            "total_candidates": stats.get("total_candidates", 0),
+            "by_length": str(stats.get("by_length", {})),
+            "privacy_candidates": stats.get("privacy_candidates", 0),
+            "chaos_candidates": stats.get("chaos_candidates", 0),
+            "stopword_candidates": stats.get("stopword_candidates", 0),
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # Pipeline definition
 # ---------------------------------------------------------------------------
@@ -347,6 +455,7 @@ PIPELINE = [
     ("apply_filters", stage_apply_filters),
     ("bucket_decision", stage_bucket_decision),
     ("tag_style", stage_tag_style),
+    ("mine_phrases", stage_mine_phrases),
     ("write_outputs", stage_write_outputs),
     ("write_review_samples", stage_write_review_samples),
 ]

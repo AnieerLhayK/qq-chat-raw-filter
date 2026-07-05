@@ -4,6 +4,8 @@ config_loader.py — Load and validate filter_config.toml for QQ raw material fi
 Provides:
 - load_config(path) -> FilterConfig
 - default_config() -> dict (fallback if file missing)
+- resolve_paths(cfg, ai_root) -> cfg with absolute paths
+- resolve_lexicon_paths(cfg, ai_root) -> cfg with absolute lexicon paths
 - ConfigValidationError
 """
 
@@ -142,12 +144,17 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
                     if not isinstance(item, str):
                         errors.append(f"filter.{k}: expected list of strings")
 
-    # --- privacy ---
+    # --- privacy mode ---
     if "privacy" in cfg:
         p = cfg["privacy"]
         mode = p.get("mode", "balanced")
         if mode not in ("strict", "balanced", "recall"):
             errors.append(f"privacy.mode: expected 'strict', 'balanced', or 'recall', got '{mode}'")
+        # high/medium_risk_words are now loaded from lexicon; inline lists
+        # are deprecated but still validated if present
+        for k in ("high_risk_words", "medium_risk_words"):
+            if k in p and not isinstance(p[k], list):
+                errors.append(f"privacy.{k}: expected list")
 
     # --- debatable ---
     if "debatable" in cfg:
@@ -162,13 +169,52 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         st = cfg["style_tags"]
         if "enable" in st and not isinstance(st["enable"], bool):
             errors.append("style_tags.enable: expected bool")
+        # argument/analysis markers now loaded from lexicon; inline lists
+        # are deprecated but validated if present
         for k in ("argument_markers", "analysis_markers"):
             if k in st and not isinstance(st[k], list):
                 errors.append(f"style_tags.{k}: expected list")
-            if k in st:
-                for item in st[k]:
-                    if not isinstance(item, str):
-                        errors.append(f"style_tags.{k}: expected list of strings")
+
+    # --- lexicon (new in v0.2) ---
+    if "lexicon" in cfg:
+        lex = cfg["lexicon"]
+        valid_keys = {
+            "phrase_bank_path", "phrase_candidates_path", "phrase_stoplist_path",
+            "privacy_lexicon_path", "chaos_lexicon_path",
+            "drop_sentence_words_path", "mask_words_path",
+            "manual_keep_path", "manual_drop_path",
+        }
+        for k in lex:
+            if k not in valid_keys:
+                errors.append(f"lexicon.{k}: unknown key")
+            if not isinstance(lex[k], str):
+                errors.append(f"lexicon.{k}: expected string path")
+
+    # --- phrase_mining (new in v0.2) ---
+    if "phrase_mining" in cfg:
+        pm = cfg["phrase_mining"]
+        if "enabled" in pm and not isinstance(pm["enabled"], bool):
+            errors.append("phrase_mining.enabled: expected bool")
+        for k in ("min_n", "max_n", "min_freq", "top_k_each_length"):
+            if k in pm and not isinstance(pm[k], int):
+                errors.append(f"phrase_mining.{k}: expected int")
+        for k in ("min_pmi_2gram", "min_pmi_3gram", "min_pmi_4gram", "min_entropy"):
+            if k in pm and not isinstance(pm[k], (int, float)):
+                errors.append(f"phrase_mining.{k}: expected number")
+        if "scan_sources" in pm and not isinstance(pm["scan_sources"], list):
+            errors.append("phrase_mining.scan_sources: expected list")
+        if "bucket_weight" in pm:
+            bw = pm["bucket_weight"]
+            for bk in ("candidates", "micro_style", "chaos_style", "need_anonymize", "rejected"):
+                if bk in bw and not isinstance(bw[bk], (int, float)):
+                    errors.append(f"phrase_mining.bucket_weight.{bk}: expected number")
+        if "output" in pm:
+            po = pm["output"]
+            for k in ("write_phrase_freq_by_length", "write_phrase_candidates",
+                       "write_phrase_report", "update_auto_phrase_candidates",
+                       "update_phrase_bank"):
+                if k in po and not isinstance(po[k], bool):
+                    errors.append(f"phrase_mining.output.{k}: expected bool")
 
     # --- tuning_advice ---
     if "tuning_advice" in cfg:
@@ -179,15 +225,6 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
             if k in ta and not isinstance(ta[k], (int, float)):
                 errors.append(f"tuning_advice.{k}: expected number")
 
-    # --- style_markers / chaos / filter lists ---
-    for list_key in ("style_markers", "chaos", "privacy", "light_interruption", "filter", "style_tags"):
-        section = cfg.get(list_key, {})
-        for sub_key in section:
-            if isinstance(section[sub_key], list):
-                for item in section[sub_key]:
-                    if not isinstance(item, str):
-                        errors.append(f"{list_key}.{sub_key}: expected list of strings")
-
     if errors:
         raise ConfigValidationError("\n".join(errors))
     return cfg
@@ -197,8 +234,8 @@ def default_config() -> Dict[str, Any]:
     """Return a complete default configuration dict."""
     return {
         "meta": {
-            "config_version": "0.1",
-            "description": "QQ character skill raw material filter config",
+            "config_version": "0.2",
+            "description": "QQ character skill raw material filter config — lexicon registry mode",
         },
         "identity": {"me_ids": [], "me_names": []},
         "path": {
@@ -258,40 +295,14 @@ def default_config() -> Dict[str, Any]:
             "write_human_review_samples": True,
             "human_review_sample_size": 100,
         },
-        "style_markers": {
-            "analysis": [
-                "我感觉", "其实", "本质上", "主要是", "关键是", "问题是",
-                "不是", "而是", "先别", "没必要", "倒也", "说白了",
-                "这么说", "怎么说呢",
-            ],
-            "tone": [
-                "有点抽象", "绷不住", "确实", "离谱", "草", "啊？",
-            ],
-        },
-        "light_interruption": {
-            "phrases": [
-                "啊？", "为啥", "然后呢", "确实", "？", "细说", "哈哈哈", "什么意思",
-            ],
-        },
-        "chaos": {
-            "mild_words": ["草", "绷不住", "抽象", "离谱"],
-            "strong_words": ["傻逼", "脑残", "滚", "死"],
-        },
-        "privacy": {
-            "mode": "balanced",
-            "high_risk_words": [
-                "密码", "验证码", "身份证", "银行卡", "token", "api_key", "secret",
-            ],
-            "medium_risk_words": [
-                "学校", "学院", "班级", "宿舍", "寝室", "老师", "手机号",
-                "电话", "地址", "学号",
-            ],
-        },
         "filter": {
             "drop_sentence_words": [],
             "mask_words": [],
             "private_names": [],
             "private_places": [],
+        },
+        "privacy": {
+            "mode": "balanced",
         },
         "debatable": {
             "enable": True,
@@ -299,8 +310,8 @@ def default_config() -> Dict[str, Any]:
         },
         "style_tags": {
             "enable": True,
-            "argument_markers": ["但是", "不过", "然而", "其实", "话说", "反过来"],
-            "analysis_markers": ["我感觉", "我认为", "我觉得", "本质上", "说白了", "这么说"],
+            "argument_markers": [],
+            "analysis_markers": [],
         },
         "tuning_advice": {
             "enable": True,
@@ -308,24 +319,81 @@ def default_config() -> Dict[str, Any]:
             "candidate_ratio_target_max": 0.12,
             "chaos_style_ratio_max": 0.10,
         },
+        "lexicon": {
+            "phrase_bank_path": "workspace/scripts/raw_material_filter/lexicons/phrase_bank.jsonl",
+            "phrase_candidates_path": "workspace/scripts/raw_material_filter/lexicons/phrase_candidates.jsonl",
+            "phrase_stoplist_path": "workspace/scripts/raw_material_filter/lexicons/phrase_stoplist.txt",
+            "privacy_lexicon_path": "workspace/scripts/raw_material_filter/lexicons/privacy_lexicon.jsonl",
+            "chaos_lexicon_path": "workspace/scripts/raw_material_filter/lexicons/chaos_lexicon.jsonl",
+            "drop_sentence_words_path": "workspace/scripts/raw_material_filter/lexicons/drop_sentence_words.jsonl",
+            "mask_words_path": "workspace/scripts/raw_material_filter/lexicons/mask_words.jsonl",
+            "manual_keep_path": "workspace/scripts/raw_material_filter/lexicons/manual_keep.jsonl",
+            "manual_drop_path": "workspace/scripts/raw_material_filter/lexicons/manual_drop.jsonl",
+        },
+        "phrase_mining": {
+            "enabled": True,
+            "min_n": 2,
+            "max_n": 4,
+            "min_freq": 5,
+            "min_pmi_2gram": 2.0,
+            "min_pmi_3gram": 3.0,
+            "min_pmi_4gram": 4.0,
+            "min_entropy": 0.5,
+            "top_k_each_length": 500,
+            "scan_sources": ["my_text", "fragments", "my_blocks"],
+            "bucket_weight": {
+                "candidates": 1.0,
+                "micro_style": 1.2,
+                "chaos_style": 0.5,
+                "need_anonymize": 0.4,
+                "rejected": -0.5,
+            },
+            "keyness": {
+                "enabled": True,
+                "compare_candidates_against_rejected": True,
+                "min_keyness": 1.5,
+            },
+            "output": {
+                "write_phrase_freq_by_length": True,
+                "write_phrase_candidates": True,
+                "write_phrase_report": True,
+                "update_auto_phrase_candidates": True,
+                "update_phrase_bank": False,
+            },
+        },
     }
 
 
 def resolve_paths(cfg: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
     """Resolve relative paths in config to absolute paths rooted at ai_root.
 
-    Modifies cfg['path'] in-place and returns cfg.
+    Handles:
+      - path.input_dir, path.output_dir
+      - lexicon.*_path
+      - phrase_mining.* (no file paths)
+    Modifies cfg in-place and returns cfg.
     """
-    if "path" not in cfg:
-        return cfg
-    for key in ("input_dir", "output_dir"):
-        raw = cfg["path"].get(key, "")
-        if raw:
-            p = Path(raw)
-            if not p.is_absolute():
-                cfg["path"][key] = str(ai_root / p)
-            else:
-                cfg["path"][key] = str(p)
+    if "path" in cfg:
+        for key in ("input_dir", "output_dir"):
+            raw = cfg["path"].get(key, "")
+            if raw:
+                p = Path(raw)
+                if not p.is_absolute():
+                    cfg["path"][key] = str(ai_root / p)
+                else:
+                    cfg["path"][key] = str(p)
+
+    # Resolve lexicon paths
+    if "lexicon" in cfg:
+        for key in list(cfg["lexicon"].keys()):
+            raw = cfg["lexicon"][key]
+            if raw and isinstance(raw, str):
+                p = Path(raw)
+                if not p.is_absolute():
+                    cfg["lexicon"][key] = str(ai_root / p)
+                else:
+                    cfg["lexicon"][key] = str(p)
+
     return cfg
 
 
@@ -392,7 +460,10 @@ def _write_toml(lines: List[str], prefix: str, obj: Any) -> None:
 if __name__ == "__main__":
     # Quick self-test
     cfg = load_config()
-    print("Default config loaded OK")
-    print(f"  session_gap_minutes = {cfg['time']['session_gap_minutes']}")
-    print(f"  style_markers.analysis = {len(cfg['style_markers']['analysis'])} entries")
-    print(f"  identity.me_ids = {cfg['identity']['me_ids']}")
+    # Test lexicon path resolution
+    from pathlib import Path
+    ai_root = Path("D:/AI")
+    cfg = resolve_paths(cfg, ai_root)
+    print("Config loaded OK (v{})".format(cfg.get("meta", {}).get("config_version", "?")))
+    print(f"  lexicon paths: {list(cfg.get('lexicon', {}).keys())}")
+    print(f"  phrase_mining enabled: {cfg.get('phrase_mining', {}).get('enabled')}")

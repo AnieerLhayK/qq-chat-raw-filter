@@ -23,6 +23,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from config_loader import load_config, resolve_paths
+from lexicon_loader import inject_lexicon
 from pipeline import run_pipeline, PipelineAbortError
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,14 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     parser.add_argument("--limit-files", type=int, default=None, help="Limit input files")
     parser.add_argument("--max-messages", type=int, default=None, help="Limit total messages")
     parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+    parser.add_argument("--mine-phrases", action="store_const", const=True, default=None,
+                        help="Enable phrase mining (overrides config)")
+    parser.add_argument("--skip-phrase-mining", action="store_const", const=True, default=None,
+                        help="Disable phrase mining (overrides config)")
+    parser.add_argument("--update-lexicon", action="store_const", const=True, default=None,
+                        help="Update phrase_candidates.jsonl with discovered phrases")
+    parser.add_argument("--force-update-phrase-bank", action="store_const", const=True, default=None,
+                        help="Allow updating phrase_bank.jsonl (dangerous)")
     return parser.parse_args(argv)
 
 
@@ -111,9 +120,25 @@ def main(argv: Optional[List[str]] = None) -> int:
 
     config = resolve_paths(config, AI_ROOT)
 
+    # Apply overrides for phrase_mining
+    if args.mine_phrases is not None:
+        config.setdefault("phrase_mining", {})["enabled"] = args.mine_phrases
+    if args.skip_phrase_mining is not None:
+        config.setdefault("phrase_mining", {})["enabled"] = not args.skip_phrase_mining
+    if args.update_lexicon is not None:
+        config.setdefault("phrase_mining", {}).setdefault("output", {})["update_auto_phrase_candidates"] = args.update_lexicon
+    if args.force_update_phrase_bank is not None:
+        config.setdefault("phrase_mining", {}).setdefault("output", {})["update_phrase_bank"] = args.force_update_phrase_bank
+
+    # Inject lexicon into config for downstream consumption
+    config = inject_lexicon(config, AI_ROOT)
+
     logger.info("Identity: ids=%s names=%s",
                  config.get("identity", {}).get("me_ids", []),
                  config.get("identity", {}).get("me_names", []))
+    logger.info("Phrase mining: %s, Lexicon loaded: %d entries",
+                 config.get("phrase_mining", {}).get("enabled", False),
+                 len(config.get("_lexicon", {}).get("phrase_bank", [])))
 
     if not args.include_all_speakers and not config.get("identity", {}).get("me_ids") and not config.get("identity", {}).get("me_names"):
         logger.error("No identity configured. Use --me-id, --me-name, --include-all-speakers, or [identity] in TOML.")

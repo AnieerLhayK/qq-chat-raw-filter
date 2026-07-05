@@ -64,6 +64,17 @@ def _cached_word_patterns(words: List[str], cache_key: str) -> List[Pattern]:
     return compiled
 
 
+def _get_style_words(config: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """Get analysis and tone word lists from lexicon (preferred) or inline TOML."""
+    lex = config.get("_lexicon")
+    if lex:
+        return lex.get("analysis_markers", []), lex.get("tone_markers", [])
+    return (
+        config.get("style_markers", {}).get("analysis", []),
+        config.get("style_markers", {}).get("tone", []),
+    )
+
+
 def score_style(block: MyBlock, config: Dict[str, Any]) -> float:
     """Score the block for expression/analysis style. 0-10."""
     text = block.my_text
@@ -86,11 +97,10 @@ def score_style(block: MyBlock, config: Dict[str, Any]) -> float:
     if metrics.get("my_turn_count", 0) >= 5:
         score += 0.5
 
-    analysis_words = config.get("style_markers", {}).get("analysis", [])
+    analysis_words, tone_words = _get_style_words(config)
     analysis_hits = sum(1 for w in analysis_words if w in text)
     score += min(analysis_hits * 2.0, 6.0)
 
-    tone_words = config.get("style_markers", {}).get("tone", [])
     tone_hits = sum(1 for w in tone_words if w in text)
     score += min(tone_hits * 1.0, 3.0)
 
@@ -114,6 +124,15 @@ def score_style(block: MyBlock, config: Dict[str, Any]) -> float:
     return round(min(score, 15.0), 1)
 
 
+def _get_privacy_words(config: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """Get high/medium risk word lists from lexicon (preferred) or inline TOML."""
+    lex = config.get("_lexicon")
+    if lex:
+        return lex.get("high_risk_words", []), lex.get("medium_risk_words", [])
+    privacy_cfg = config.get("privacy", {})
+    return privacy_cfg.get("high_risk_words", []), privacy_cfg.get("medium_risk_words", [])
+
+
 def score_privacy(block: MyBlock, config: Dict[str, Any]) -> float:
     """Score privacy risk. 0-10. Higher = more risk."""
     text = block.my_text
@@ -121,14 +140,14 @@ def score_privacy(block: MyBlock, config: Dict[str, Any]) -> float:
         return 0
 
     score = 0.0
-    privacy_cfg = config.get("privacy", {})
 
-    high_risk = _cached_word_patterns(privacy_cfg.get("high_risk_words", []), "privacy_high")
+    high_risk_words, medium_risk_words = _get_privacy_words(config)
+    high_risk = _cached_word_patterns(high_risk_words, "privacy_high")
     for pat in high_risk:
         if pat.search(text):
             score += 3.0
 
-    medium_risk = _cached_word_patterns(privacy_cfg.get("medium_risk_words", []), "privacy_medium")
+    medium_risk = _cached_word_patterns(medium_risk_words, "privacy_medium")
     for pat in medium_risk:
         if pat.search(text):
             score += 1.5
@@ -147,6 +166,23 @@ def score_privacy(block: MyBlock, config: Dict[str, Any]) -> float:
                 score += 2.0
 
     return round(min(score, 15.0), 1)
+
+
+def _get_li_words(config: Dict[str, Any]) -> List[str]:
+    """Get light interruption words from lexicon (preferred) or inline TOML."""
+    lex = config.get("_lexicon")
+    if lex:
+        return lex.get("light_interruption", [])
+    return config.get("light_interruption", {}).get("phrases", [])
+
+
+def _get_chaos_words(config: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """Get mild/strong chaos words from lexicon (preferred) or inline TOML."""
+    lex = config.get("_lexicon")
+    if lex:
+        return lex.get("mild_words", []), lex.get("strong_words", [])
+    chaos_cfg = config.get("chaos", {})
+    return chaos_cfg.get("mild_words", []), chaos_cfg.get("strong_words", [])
 
 
 def score_junk(block: MyBlock, config: Dict[str, Any]) -> float:
@@ -182,7 +218,7 @@ def score_junk(block: MyBlock, config: Dict[str, Any]) -> float:
     if metrics.get("total_char_count", 0) > max_block:
         score += 3.0
 
-    li_words = config.get("light_interruption", {}).get("phrases", [])
+    li_words = _get_li_words(config)
     li_hits = sum(text.count(p) for p in li_words)
     if li_hits >= 3:
         score += min(li_hits * 0.5, 3.0)
@@ -197,13 +233,13 @@ def score_chaos(block: MyBlock, config: Dict[str, Any]) -> float:
         return 0
 
     score = 0.0
-    chaos_cfg = config.get("chaos", {})
 
-    mild = _cached_word_patterns(chaos_cfg.get("mild_words", []), "chaos_mild")
+    mild_words, strong_words = _get_chaos_words(config)
+    mild = _cached_word_patterns(mild_words, "chaos_mild")
     mild_hits = sum(1 for pat in mild if pat.search(text))
     score += min(mild_hits * 1.0, 3.0)
 
-    strong = _cached_word_patterns(chaos_cfg.get("strong_words", []), "chaos_strong")
+    strong = _cached_word_patterns(strong_words, "chaos_strong")
     strong_hits = sum(1 for pat in strong if pat.search(text))
     score += min(strong_hits * 2.0, 6.0)
 

@@ -17,7 +17,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 
 from block_builder import MyBlock
 
@@ -34,6 +34,21 @@ _MIN_STYLE_FOR_JOKE = 3
 _MIN_TURN_COUNT_FOR_ARGUMENT = 3
 
 
+def _get_tag_markers(config: Dict[str, Any]) -> Tuple[List[str], List[str]]:
+    """Get argument/analysis tag markers from lexicon (preferred) or inline TOML."""
+    lex = config.get("_lexicon")
+    if lex:
+        return (
+            lex.get("argument_markers", []),
+            lex.get("analysis_tag_markers", []),
+        )
+    st = config.get("style_tags", {})
+    return (
+        st.get("argument_markers", ["但是", "不过", "然而", "其实"]),
+        st.get("analysis_markers", ["我感觉", "我认为", "我觉得", "本质上", "说白了"]),
+    )
+
+
 def tag_style(blocks: List[MyBlock], config: Dict[str, Any]) -> int:
     """Compute and attach style_tags to each block.
 
@@ -47,10 +62,7 @@ def tag_style(blocks: List[MyBlock], config: Dict[str, Any]) -> int:
             block.style_tags = []
         return 0
 
-    arg_markers = config.get("style_tags", {}).get("argument_markers",
-                                                    ["但是", "不过", "然而", "其实"])
-    analysis_markers = config.get("style_tags", {}).get("analysis_markers",
-                                                         ["我感觉", "我认为", "我觉得", "本质上", "说白了"])
+    arg_markers, analysis_markers = _get_tag_markers(config)
     _arg_patterns = [re.compile(re.escape(m)) for m in arg_markers]
     _analysis_patterns = [re.compile(re.escape(m)) for m in analysis_markers]
 
