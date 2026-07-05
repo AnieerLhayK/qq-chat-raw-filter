@@ -75,10 +75,26 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
         block.bucket = "chaos_style"
         return "chaos_style", reasons
 
-    # 5. High style
+    # 5. High style → candidates, with quality pre-checks
     if style >= sc.get("candidate_min_style_score", 5):
         char_count = block.metrics.get("my_char_count", 0)
         if char_count >= sc.get("candidate_min_chars_when_style_high", 30):
+            # Quality gates: reject candidates with elevated chaos, junk,
+            # or low my-speaker ratio. Each gate has its own reason so
+            # top_reject_reasons in stats.json is actionable.
+            if chaos >= 2:
+                reasons.append(f"candidate_chaotic:{chaos}")
+                block.bucket = "rejected"
+                return "rejected", reasons
+            if junk >= 3:
+                reasons.append(f"candidate_junky:{junk}")
+                block.bucket = "rejected"
+                return "rejected", reasons
+            my_ratio = block.metrics.get("my_char_ratio", 0)
+            if my_ratio < 0.55:
+                reasons.append(f"candidate_low_ratio:{my_ratio:.2f}")
+                block.bucket = "rejected"
+                return "rejected", reasons
             reasons.append("high_style_score")
             block.bucket = "candidates"
             return "candidates", reasons
@@ -92,8 +108,22 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
         block.bucket = "micro_style"
         return "micro_style", reasons
 
-    # 7. Fallback
-    reasons.append("low_style_and_high_junk_or_chaos")
+    # 7. Fallback — decompose WHY so stats.json shows actionable signals
+    fallback_parts = []
+    micro_min = sc.get("micro_style_min_style_score", 2)
+    if style < micro_min:
+        fallback_parts.append(f"style_too_low:{style}")
+    junk_threshold = sc.get("junk_reject_score", 6) * 0.4
+    if junk >= junk_threshold:
+        fallback_parts.append(f"elevated_junk:{junk}")
+    chaos_threshold = sc.get("chaos_separate_score", 4) * 0.5
+    if chaos >= chaos_threshold:
+        fallback_parts.append(f"elevated_chaos:{chaos}")
+    if not fallback_parts:
+        fallback_parts.append(
+            f"composite:style={style},junk={junk},chaos={chaos}"
+        )
+    reasons.append(f"rejected_fallback:{'|'.join(fallback_parts)}")
     block.bucket = "rejected"
     return "rejected", reasons
 
@@ -109,6 +139,15 @@ def classify_all(blocks: List[MyBlock], config: Dict[str, Any]) -> Dict[str, Lis
     }
 
     for block in blocks:
+        # Blocks pre-classified upstream (e.g. sub-threshold blocks from
+        # extract_my_blocks already marked as 'rejected') skip scoring.
+        if block.bucket:
+            if block.bucket in buckets:
+                buckets[block.bucket].append(block)
+            else:
+                buckets["rejected"].append(block)
+            continue
+
         bucket, reasons = classify_block(block, config)
         block.reasons = reasons
         if bucket in buckets:
