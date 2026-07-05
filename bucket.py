@@ -21,29 +21,33 @@ from scorer import score_all
 logger = logging.getLogger(__name__)
 
 
+SCORE_KEYS = frozenset({"style_score", "privacy_score", "junk_score", "chaos_score"})
+
+
 def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[str]]:
     """Classify a single block into a bucket.
+
+    Uses pre-existing ``block.scores`` if all four keys are present
+    (set by the pipeline's ``score_blocks`` stage); otherwise computes
+    scores on the fly.
 
     Returns:
         (bucket_name, list_of_reasons)
     """
-    scores = score_all(block, config)
-    block.scores = scores
+    if not SCORE_KEYS.issubset(block.scores):
+        block.scores = score_all(block, config)
     reasons: List[str] = []
 
     sc = config.get("score", {})
     rc = config.get("ratio", {})
 
-    style = scores["style_score"]
-    privacy = scores["privacy_score"]
-    junk = scores["junk_score"]
-    chaos = scores["chaos_score"]
+    style = block.scores["style_score"]
+    privacy = block.scores["privacy_score"]
+    junk = block.scores["junk_score"]
+    chaos = block.scores["chaos_score"]
 
-    # 0. Pre-assigned bucket (e.g. from dedup or filter stages)
-    if block.bucket:
-        return block.bucket, block.reasons
-
-    # 1. High privacy
+    # 1. High privacy (note: pre-classified blocks from dedup/filter stages
+    #    are handled by classify_all() directly without calling classify_block)
     if privacy >= 8:
         if style >= sc.get("need_anonymize_min_style_score", 3):
             reasons.append("high_privacy_but_has_style")
@@ -59,8 +63,9 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
         block.bucket = "rejected"
         return "rejected", reasons
 
-    # 3. Moderate privacy
-    if privacy >= sc.get("need_anonymize_min_style_score", 3):
+    # 3. Moderate privacy — uses explicit privacy threshold, not a style threshold
+    privacy_medium = sc.get("privacy_medium_threshold", 5)
+    if privacy >= privacy_medium and privacy < 8:
         if style >= sc.get("need_anonymize_min_style_score", 3):
             reasons.append("medium_privacy_with_style")
             block.bucket = "need_anonymize"

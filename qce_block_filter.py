@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -26,7 +27,14 @@ from pipeline import run_pipeline, PipelineAbortError
 
 logger = logging.getLogger(__name__)
 
-AI_ROOT = Path("D:/AI").resolve()
+def _get_ai_root() -> Path:
+    """Resolve AI_ROOT: env var AI_ROOT > platform default (D:/AI)."""
+    env_root = os.environ.get("AI_ROOT")
+    if env_root:
+        return Path(env_root).resolve()
+    return Path("D:/AI").resolve()
+
+AI_ROOT = _get_ai_root()
 
 
 def setup_logging(debug: bool = False) -> None:

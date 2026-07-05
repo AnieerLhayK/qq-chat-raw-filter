@@ -3,18 +3,23 @@ scorer.py — Score MyBlock objects on four dimensions: style, privacy, junk, ch
 
 Each scorer returns a float score (higher = more of that dimension).
 Used by bucket.py for classification decisions.
+
+Performance note: regex patterns are compiled once per config dict via
+_config_patterns() and passed to each scorer to avoid re-compilation
+on every block.
 """
 
 from __future__ import annotations
 
 import re
 import logging
-from typing import Any, Dict, List, Pattern
+from typing import Any, Dict, List, Pattern, Tuple
 
 from block_builder import MyBlock
 
 logger = logging.getLogger(__name__)
 
+# -- Static patterns (config-independent) --
 _EMAIL_PATTERN = re.compile(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}")
 _URL_PATTERN = re.compile(r"https?://[^\s()<>\"']+|(?:www\.)[^\s()<>\"']+", re.IGNORECASE)
 _PHONE_PATTERN = re.compile(r"1[3-9]\d{9}")
@@ -29,7 +34,34 @@ _I_FEEL = re.compile(r"我感觉|我个人|我认为|我觉得")
 
 
 def _compile_words(words: List[str]) -> List[Pattern]:
+    """Compile word list to case-insensitive regex patterns."""
     return [re.compile(re.escape(w), re.IGNORECASE) for w in words]
+
+
+# ---------------------------------------------------------------------------
+# Config-dependent pattern cache
+# ---------------------------------------------------------------------------
+# _pattern_cache: dict of config section key -> tuple of (config_version_token, [Pattern])
+# Recompiles only when the word list changes between calls.
+_pattern_cache: Dict[str, Tuple[int, List[Pattern]]] = {}
+
+
+def _cached_word_patterns(words: List[str], cache_key: str) -> List[Pattern]:
+    """Return compiled patterns for *words*, cached under *cache_key*.
+
+    Compiles once per unique word-list identity.  Since the config dict is
+    stable during a pipeline run, re-computation across thousands of blocks
+    is avoided.
+    """
+    # Use id() and length as a cheap version token — good enough since the
+    # config doesn't mutate within one run.
+    token = id(words)
+    cached = _pattern_cache.get(cache_key)
+    if cached is not None and cached[0] == token:
+        return cached[1]
+    compiled = _compile_words(words)
+    _pattern_cache[cache_key] = (token, compiled)
+    return compiled
 
 
 def score_style(block: MyBlock, config: Dict[str, Any]) -> float:
@@ -91,12 +123,12 @@ def score_privacy(block: MyBlock, config: Dict[str, Any]) -> float:
     score = 0.0
     privacy_cfg = config.get("privacy", {})
 
-    high_risk = _compile_words(privacy_cfg.get("high_risk_words", []))
+    high_risk = _cached_word_patterns(privacy_cfg.get("high_risk_words", []), "privacy_high")
     for pat in high_risk:
         if pat.search(text):
             score += 3.0
 
-    medium_risk = _compile_words(privacy_cfg.get("medium_risk_words", []))
+    medium_risk = _cached_word_patterns(privacy_cfg.get("medium_risk_words", []), "privacy_medium")
     for pat in medium_risk:
         if pat.search(text):
             score += 1.5
@@ -150,8 +182,8 @@ def score_junk(block: MyBlock, config: Dict[str, Any]) -> float:
     if metrics.get("total_char_count", 0) > max_block:
         score += 3.0
 
-    li_phrases = config.get("light_interruption", {}).get("phrases", [])
-    li_hits = sum(text.count(p) for p in li_phrases)
+    li_words = config.get("light_interruption", {}).get("phrases", [])
+    li_hits = sum(text.count(p) for p in li_words)
     if li_hits >= 3:
         score += min(li_hits * 0.5, 3.0)
 
@@ -167,11 +199,11 @@ def score_chaos(block: MyBlock, config: Dict[str, Any]) -> float:
     score = 0.0
     chaos_cfg = config.get("chaos", {})
 
-    mild = _compile_words(chaos_cfg.get("mild_words", []))
+    mild = _cached_word_patterns(chaos_cfg.get("mild_words", []), "chaos_mild")
     mild_hits = sum(1 for pat in mild if pat.search(text))
     score += min(mild_hits * 1.0, 3.0)
 
-    strong = _compile_words(chaos_cfg.get("strong_words", []))
+    strong = _cached_word_patterns(chaos_cfg.get("strong_words", []), "chaos_strong")
     strong_hits = sum(1 for pat in strong if pat.search(text))
     score += min(strong_hits * 2.0, 6.0)
 

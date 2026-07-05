@@ -34,8 +34,8 @@ raw_material_filter/
 | `raw_material/qq/exports/raw/qq-chat-exporter-live/` | 原始 QCE 导出（只读） |
 | `raw_material/qq/exports/normalized/run_YYYYMMDD_HHMMSS/` | 每次运行的输出目录 |
 
-所有路径以 `D:\AI` 为最高级（`AI_ROOT`），代码中无硬编码绝对路径。
-默认 `AI_ROOT = D:/AI`，可通过 `--input-dir` / `--output-dir` 覆盖。
+所有路径以 `AI_ROOT` 为最高级，代码中无硬编码绝对路径。
+默认 `AI_ROOT = D:/AI`，可通过环境变量 `AI_ROOT` 覆盖，或通过 `--input-dir` / `--output-dir` 临时指定。
 
 ## 快速开始
 
@@ -81,10 +81,13 @@ micro_style.jsonl         # 短风格碎片
 need_anonymize.jsonl      # 需要匿名化
 chaos_style.jsonl         # 抽象/吐槽/脏话
 rejected.jsonl            # 丢弃材料（含原因）
+debatable.jsonl           # 有风格值但质量门未通过
 stats.json                # 统计信息
 active_config.toml        # 本次运行的实际配置
+pipeline_trace.json       # 各阶段执行跟踪
 debug_sessions.jsonl      # 调试信息
-review_samples/           # 人工审核样本
+review_samples/           # 人工审核样本（6个分层文件）
+tuning_advice.md          # 调参建议
 ```
 
 ## 分桶含义
@@ -95,6 +98,7 @@ review_samples/           # 人工审核样本
 | `micro_style` | 短风格碎片。如"确实"、"绷不住了" |
 | `need_anonymize` | 有风格价值但含隐私/具体事实 |
 | `chaos_style` | 抽象/吐槽/脏话风格 |
+| `debatable` | 有风格值但质量门未通过的待定块 |
 | `rejected` | 丢弃材料，含丢弃原因 |
 
 ## 命令行参数

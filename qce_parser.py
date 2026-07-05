@@ -387,7 +387,9 @@ def is_self(message: ParsedMessage, me_ids: List[str], me_names: List[str]) -> b
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    test_dir = Path("D:/AI/raw_material/qq/exports/raw/qq-chat-exporter-live")
+    import os
+    _ai_root = Path(os.environ.get("AI_ROOT", "D:/AI"))
+    test_dir = _ai_root / "raw_material/qq/exports/raw/qq-chat-exporter-live"
     msgs, infos, warns = load_all_files(test_dir, limit_files=2)
     print(f"Parsed {len(msgs)} messages from {len(infos)} files")
     print(f"Warnings: {len(warns)}")

@@ -108,6 +108,7 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         _check_non_negative(sc.get("chaos_separate_score", 4), "score.chaos_separate_score")
         _check_non_negative(sc.get("debatable_min_style_score", 4), "score.debatable_min_style_score")
         _check_non_negative(sc.get("debatable_max_per_run", 200), "score.debatable_max_per_run")
+        _check_non_negative(sc.get("privacy_medium_threshold", 5), "score.privacy_medium_threshold")
 
     # --- ratio ---
     if "ratio" in cfg:
@@ -141,7 +142,7 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
                     if not isinstance(item, str):
                         errors.append(f"filter.{k}: expected list of strings")
 
-    # --- filter ---
+    # --- privacy ---
     if "privacy" in cfg:
         p = cfg["privacy"]
         mode = p.get("mode", "balanced")
@@ -237,6 +238,7 @@ def default_config() -> Dict[str, Any]:
             "chaos_separate_score": 4,
             "debatable_min_style_score": 4,
             "debatable_max_per_run": 200,
+            "privacy_medium_threshold": 5,
         },
         "ratio": {
             "max_short_fragment_ratio": 0.70,

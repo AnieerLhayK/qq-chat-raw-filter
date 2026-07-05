@@ -106,16 +106,19 @@ def generate_tuning_advice(ctx: Dict[str, Any]) -> None:
             f"Consider raising to 2.5-3.0 if too noisy, or keeping 2.0 if valuable as personality markers."
         )
 
-    if "rejected_fallback" in next(iter(reason_counts.keys()), ""):
+    # BUGFIX: previously used next(iter(...)) which only checked the first key
+    has_fallback = any(k.startswith("rejected_fallback") for k in reason_counts)
+    if has_fallback:
         fb_count = sum(c for k, c in reason_counts.items() if k.startswith("rejected_fallback"))
         observations.append(
             f"5. **rejected_fallback**: {fb_count} blocks hit the fallback path. "
             f"Check `top_reject_reasons` in stats.json for the dominant fallback signal."
         )
 
-    if "exact_duplicate" in next(iter(reason_counts.keys()), ""):
+    has_duplicate = any("duplicate" in k for k in reason_counts)
+    if has_duplicate:
         dup_count = sum(c for k, c in reason_counts.items() if "duplicate" in k)
-        if dup_count > total * 0.01 and total > 0:
+        if dup_count > max(total * 0.01, 5) and total > 0:
             observations.append(
                 f"6. **Exact duplicates**: {dup_count} blocks removed. "
                 f"Current duplicate_keep_limit={config.get('dedup', {}).get('duplicate_keep_limit', 3)}. "

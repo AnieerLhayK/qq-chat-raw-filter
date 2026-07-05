@@ -37,8 +37,8 @@ def apply_drop_sentence_words(blocks: List[MyBlock], drop_words: List[str]) -> i
     dropped = 0
 
     for block in blocks:
-        if block.bucket and block.bucket != "candidates":
-            # Only apply to blocks that aren't already rejected or chaos
+        if block.bucket == "rejected":
+            # Already rejected — no need to re-check
             continue
         for i, pat in enumerate(patterns):
             if pat.search(block.my_text):

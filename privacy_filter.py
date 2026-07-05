@@ -49,7 +49,7 @@ def filter_privacy_blocks(blocks: List[MyBlock], config: Dict[str, Any]) -> int:
     if mode == "strict":
         for block in blocks:
             score = block.scores.get("privacy_score", 0)
-            if score > 3 and block.bucket in ("", "candidates", "micro_style"):
+            if score > 3 and (not block.bucket or block.bucket in ("candidates", "micro_style")):
                 block.bucket = "rejected"
                 block.reasons.append(f"strict_privacy:score={score}")
 
@@ -58,7 +58,7 @@ def filter_privacy_blocks(blocks: List[MyBlock], config: Dict[str, Any]) -> int:
             score = block.scores.get("privacy_score", 0)
             style = block.scores.get("style_score", 0)
             # Lower threshold: >= 5 goes to need_anonymize if has style
-            if 5 <= score < 10 and style >= 2 and block.bucket == "":
+            if 5 <= score < 10 and style >= 2 and not block.bucket:
                 block.bucket = "need_anonymize"
                 block.reasons.append(f"recall_privacy:score={score}")
 

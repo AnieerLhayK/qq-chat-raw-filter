@@ -478,10 +478,12 @@ def _build_stats(
     for sr in ctx.get("stage_results", {}).values():
         all_warnings.extend(sr.warnings)
 
+    # Use parse_files stage count for accurate file count
+    parse_sr = ctx.get("stage_results", {}).get("parse_files")
+    files_found = parse_sr.counts.get("files_found", len(file_infos)) if parse_sr else len(file_infos)
+
     return {
-        "total_files_found": len(file_infos) + sum(
-            1 for sr in ctx.get("stage_results", {}).values()
-            if sr.warnings),
+        "total_files_found": files_found,
         "total_files_parsed": len(file_infos),
         "total_messages": len(messages),
         "own_messages": own_msg_count,

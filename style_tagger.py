@@ -44,7 +44,7 @@ def tag_style(blocks: List[MyBlock], config: Dict[str, Any]) -> int:
     """
     if not config.get("style_tags", {}).get("enable", True):
         for block in blocks:
-            block.style_tags = []  # type: ignore
+            block.style_tags = []
         return 0
 
     arg_markers = config.get("style_tags", {}).get("argument_markers",
@@ -100,6 +100,6 @@ def tag_style(blocks: List[MyBlock], config: Dict[str, Any]) -> int:
         if tags:
             tagged += 1
 
-        block.style_tags = tags  # type: ignore
+        block.style_tags = tags
 
     return tagged
