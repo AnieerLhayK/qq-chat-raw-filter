@@ -21,10 +21,10 @@ hard_interruption_chars = 90
 max_light_interruptions = 4
 
 [my_block]
-min_my_block_chars = 40
+min_my_block_chars = 20
 good_my_block_chars = 100
 min_my_char_ratio = 0.60
-min_my_msg_count = 2
+min_my_msg_count = 1
 short_fragment_chars = 3
 max_block_chars = 1000
 max_fragment_count = 90
@@ -35,12 +35,12 @@ very_short_chars = 3
 max_single_message_chars = 500
 
 [score]
-candidate_min_style_score = 7
+candidate_min_style_score = 5
 candidate_min_chars_when_style_high = 45
-micro_style_min_style_score = 3
+micro_style_min_style_score = 2
 need_anonymize_min_style_score = 3
 junk_reject_score = 5
-chaos_separate_score = 3
+chaos_separate_score = 2
 
 [ratio]
 max_short_fragment_ratio = 0.60
@@ -84,5 +84,21 @@ medium_risk_words = [
 ]
 
 [chaos]
-mild_words = ["草", "绷不住", "抽象", "离谱"]
-strong_words = ["傻逼", "脑残", "滚", "死"]
+mild_words = [
+  # Original
+  "草", "绷不住", "抽象", "离谱",
+  # User's chat patterns — minced oaths
+  "byd", "md", "tmd",
+  # User's chat patterns — complaint/venting
+  "烦死了", "累死了", "困死了", "气死了", "笑死了",
+  "我要吐了", "受不了",
+  # User's chat patterns — oral slang
+  "难绷", "逆天", "包的", "无敌了", "没救了",
+  # Common internet oral expressions (2025-2026)
+  "哈人", "破防", "无语", "绝了", "完了",
+  "尊嘟假嘟", "那咋了", "6",
+]
+strong_words = [
+  "傻逼", "脑残", "滚",
+  "有病", "恶心", "废物", "闭嘴",
+]
