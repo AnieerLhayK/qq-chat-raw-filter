@@ -19,7 +19,7 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from block_builder import MyBlock
+from qq_raw_filter.block_builder import MyBlock
 
 logger = logging.getLogger(__name__)
 

@@ -15,8 +15,8 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Tuple
 
-from block_builder import MyBlock
-from scorer import score_all
+from qq_raw_filter.block_builder import MyBlock
+from qq_raw_filter.scorer import score_all
 
 logger = logging.getLogger(__name__)
 

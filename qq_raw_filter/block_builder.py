@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 from typing import Any, Dict, List, Optional, Tuple
 
-from qce_parser import ParsedMessage, is_self
+from qq_raw_filter.qce_parser import ParsedMessage, is_self
 
 logger = logging.getLogger(__name__)
 

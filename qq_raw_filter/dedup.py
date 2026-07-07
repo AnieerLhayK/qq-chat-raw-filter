@@ -12,7 +12,7 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Any, Dict, List, Set
 
-from block_builder import MyBlock
+from qq_raw_filter.block_builder import MyBlock
 
 logger = logging.getLogger(__name__)
 

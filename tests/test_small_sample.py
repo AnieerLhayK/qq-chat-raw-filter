@@ -15,11 +15,11 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from config_loader import load_config, validate_config, default_config
-from qce_parser import parse_qce_json, scan_input_dir, is_self, ParsedMessage
-from block_builder import messages_to_turns, turns_to_sessions, extract_my_blocks
-from scorer import score_style, score_privacy, score_junk, score_chaos
-from bucket import classify_block
+from qq_raw_filter.config_loader import load_config, validate_config, default_config
+from qq_raw_filter.qce_parser import parse_qce_json, scan_input_dir, is_self, ParsedMessage
+from qq_raw_filter.block_builder import messages_to_turns, turns_to_sessions, extract_my_blocks
+from qq_raw_filter.scorer import score_style, score_privacy, score_junk, score_chaos
+from qq_raw_filter.bucket import classify_block
 
 
 SAMPLE_DATA_DIR = Path("D:/AI/raw_material/qq/exports/raw/qq-chat-exporter-live")

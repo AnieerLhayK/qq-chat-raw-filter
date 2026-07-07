@@ -17,19 +17,19 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config_loader import snap_config
-from qce_parser import load_all_files, is_self
-from block_builder import build_blocks_from_messages, MyBlock
-from scorer import score_all
-from bucket import classify_all
-from dedup import dedup_blocks
-from filter_applier import apply_drop_sentence_words, apply_masklist
-from privacy_filter import filter_privacy_blocks
-from style_tagger import tag_style
-from review_sampler import write_stratified_samples
-from tuning_advice import generate_tuning_advice
-from phrase_miner import mine_phrases, generate_phrase_report
-from lexicon_auditor import audit_legacy_lexicon
+from qq_raw_filter.config_loader import snap_config
+from qq_raw_filter.qce_parser import load_all_files, is_self
+from qq_raw_filter.block_builder import build_blocks_from_messages, MyBlock
+from qq_raw_filter.scorer import score_all
+from qq_raw_filter.bucket import classify_all
+from qq_raw_filter.dedup import dedup_blocks
+from qq_raw_filter.filter_applier import apply_drop_sentence_words, apply_masklist
+from qq_raw_filter.privacy_filter import filter_privacy_blocks
+from qq_raw_filter.style_tagger import tag_style
+from qq_raw_filter.review_sampler import write_stratified_samples
+from qq_raw_filter.tuning_advice import generate_tuning_advice
+from qq_raw_filter.phrase_miner import mine_phrases, generate_phrase_report
+from qq_raw_filter.lexicon_auditor import audit_legacy_lexicon
 
 logger = logging.getLogger(__name__)
 

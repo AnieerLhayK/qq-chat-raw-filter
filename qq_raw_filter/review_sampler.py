@@ -18,7 +18,7 @@ import random
 from pathlib import Path
 from typing import Any, Dict, List
 
-from block_builder import MyBlock
+from qq_raw_filter.block_builder import MyBlock
 
 logger = logging.getLogger(__name__)
 

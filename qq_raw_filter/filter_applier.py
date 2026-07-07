@@ -12,7 +12,7 @@ import logging
 import re
 from typing import List
 
-from block_builder import MyBlock
+from qq_raw_filter.block_builder import MyBlock
 
 logger = logging.getLogger(__name__)
 
