@@ -26,17 +26,18 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Classification thresholds
 # ---------------------------------------------------------------------------
-MIN_FREQ_PROMOTE = 5         # Minimum total frequency to consider promotion
-MIN_CANDIDATE_RATE = 0.3     # Minimum candidate+micro_style / total ratio
-MAX_REJECTED_RATE = 0.3      # Maximum rejected / total ratio for promotion
+MIN_FREQ_PROMOTE = 8         # Minimum total frequency to consider promotion
+MIN_CANDIDATE_RATE = 0.4     # Minimum candidate+micro_style / total ratio
+MAX_REJECTED_RATE = 0.2      # Maximum rejected / total ratio for promotion
 MIN_FREQ_CANDIDATE = 2       # Minimum frequency to stay as candidate
-MAX_REJECTED_RATE_DEMOTE = 0.5  # Above this, demote regardless of frequency
+MAX_REJECTED_RATE_DEMOTE = 0.35  # Above this, demote regardless of frequency
 
 
 def _classify_term(
     freq_total: int,
     bucket_freq: Dict[str, int],
     old_category: str,
+    term: str = "",
 ) -> Dict[str, Any]:
     """Classify an archived term for promotion/demotion/removal.
 
@@ -59,6 +60,18 @@ def _classify_term(
         style_keyness = good / max(1, bad)
 
     reasons: List[str] = []
+
+    # ---- Single-character noise filter ----
+    # Single characters (incl. punctuation like "？") are never meaningful
+    # style markers on their own — auto-demote regardless of category.
+    if len(term) <= 1:
+        return {
+            "candidate_rate": round(candidate_rate, 4),
+            "rejected_rate": round(rejected_rate, 4),
+            "style_keyness": round(style_keyness, 2),
+            "suggested_status": "demote_or_remove",
+            "reasons": ["single_character_noise"],
+        }
 
     # Determine if this is a privacy or chaos category
     is_privacy = old_category.startswith("privacy.")
@@ -219,7 +232,7 @@ def audit_legacy_lexicon(
         primary_category = info["old_categories"][0] if info["old_categories"] else "unknown"
         primary_source = info["source_files"][0] if info["source_files"] else "unknown"
 
-        classification = _classify_term(freq_total, bucket_freq, primary_category)
+        classification = _classify_term(freq_total, bucket_freq, primary_category, phrase)
 
         entry = {
             "term": phrase,

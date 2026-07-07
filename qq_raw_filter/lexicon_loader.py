@@ -66,7 +66,11 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
 
 
 def _load_stoplist(path: Path) -> Set[str]:
-    """Load a stoplist TXT file; one phrase per line."""
+    """Load a stoplist TXT file; one phrase per line.
+
+    Lines starting with ``#`` are treated as comments and skipped.
+    Trailing ``# comments`` on data lines are also stripped.
+    """
     if not path.exists():
         logger.warning("Stoplist not found, using empty: %s", path)
         return set()
@@ -74,6 +78,11 @@ def _load_stoplist(path: Path) -> Set[str]:
     with path.open("r", encoding="utf-8") as f:
         for line in f:
             w = line.strip()
+            if not w or w.startswith("#"):
+                continue
+            # Strip inline comment (space+# at word boundary)
+            if " #" in w:
+                w = w[:w.index(" #")].strip()
             if w:
                 words.add(w)
     logger.info("Loaded %d stopwords from %s", len(words), path)
