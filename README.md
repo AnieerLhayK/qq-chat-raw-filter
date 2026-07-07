@@ -5,6 +5,7 @@
 **结构化分桶引擎** — 将 QQ Chat Exporter 导出的原始聊天记录粗处理为分桶材料，用于后续 character skill 提炼。
 
 [![Frame for AI Workspace](https://img.shields.io/badge/Frame_for_AI_Workspace-181717?style=flat-square&logo=github)](https://github.com/AnieerLhayK/Frame-for-AI-workspace)
+[![Chatty Ch System](https://img.shields.io/badge/Chatty_Ch_System-4B5563?style=flat-square&logo=github)](https://github.com/AnieerLhayK/Chatty-Ch-System)
 [![QQ Chat Exporter](https://img.shields.io/badge/QQ_Chat_Exporter-00BFFF?style=flat-square&logo=tencentqq)](https://github.com/shuakami/qq-chat-exporter)
 
 </div>
@@ -27,7 +28,7 @@ QQ Chat Exporter           QQ Chat Raw Material Filter       Character Skill
 ```
 
 - **上游依赖**：[shuakami/qq-chat-exporter](https://github.com/shuakami/qq-chat-exporter) V5 — 提供原始 JSON 导出
-- **下游产出**：分桶候选材料，供 [Frame for AI Workspace](https://github.com/AnieerLhayK/Frame-for-AI-workspace) 中的 character skill 模块使用
+- **下游产出**：分桶候选材料，可作为 [Chatty Ch System](https://github.com/AnieerLhayK/Chatty-Ch-System) 的授权语料输入，并在 [Frame for AI Workspace](https://github.com/AnieerLhayK/Frame-for-AI-workspace) 中进入 character skill 生成/诊断/维护流程
 - **本仓库不处理**：模型训练、最终 skill 生成、数据可视化
 
 ---
@@ -240,4 +241,5 @@ pytest tests/ -v
 | 项目 | 链接 | 说明 |
 |------|------|------|
 | Frame for AI Workspace | [https://github.com/AnieerLhayK/Frame-for-AI-workspace](https://github.com/AnieerLhayK/Frame-for-AI-workspace) | AI 工作流框架 — 本仓库的上层生态 |
+| Chatty Ch System | [https://github.com/AnieerLhayK/Chatty-Ch-System](https://github.com/AnieerLhayK/Chatty-Ch-System) | Character skill 工程系统 — 本仓库 filter 后的分桶语料可作为其生成输入 |
 | QQ Chat Exporter | [https://github.com/shuakami/qq-chat-exporter](https://github.com/shuakami/qq-chat-exporter) | QQ 聊天记录导出工具 V5 — 本仓库的数据来源 |

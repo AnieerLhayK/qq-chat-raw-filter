@@ -1,0 +1,15 @@
+# Python build and test artifacts
+__pycache__/
+.pytest_cache/
+*.pyc
+*.egg-info/
+build/
+dist/
+
+# Local data and debug output
+debug/*
+!debug/.gitkeep
+corpus/
+output/
+*.local.toml
+*.local.json

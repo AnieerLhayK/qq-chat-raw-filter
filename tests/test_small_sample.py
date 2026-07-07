@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import sys
 import os
+import unittest
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
@@ -23,6 +24,12 @@ from qq_raw_filter.bucket import classify_block
 
 
 SAMPLE_DATA_DIR = Path("D:/AI/raw_material/qq/exports/raw/qq-chat-exporter-live")
+
+
+def _require_sample_data():
+    if SAMPLE_DATA_DIR.exists() and any(SAMPLE_DATA_DIR.rglob("*.json")):
+        return
+    raise unittest.SkipTest(f"live QCE sample data not available: {SAMPLE_DATA_DIR}")
 
 
 def _get_config():
@@ -50,6 +57,7 @@ def test_config_validation():
 
 
 def test_parse_qce_file():
+    _require_sample_data()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     assert len(files) >= 1
     msgs, info, warns = parse_qce_json(files[0])
@@ -64,6 +72,7 @@ def test_parse_qce_file():
 
 
 def test_is_self():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     msgs, _, _ = parse_qce_json(files[0])
@@ -75,6 +84,7 @@ def test_is_self():
 
 
 def test_messages_to_turns():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     msgs, _, _ = parse_qce_json(files[0])
@@ -86,6 +96,7 @@ def test_messages_to_turns():
 
 
 def test_turns_to_sessions():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     msgs, info, _ = parse_qce_json(files[0])
@@ -98,6 +109,7 @@ def test_turns_to_sessions():
 
 
 def test_extract_my_blocks():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     msgs, _, _ = parse_qce_json(files[0])
@@ -112,6 +124,7 @@ def test_extract_my_blocks():
 
 
 def test_scoring():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     msgs, _, _ = parse_qce_json(files[0])
@@ -134,6 +147,7 @@ def test_scoring():
 
 
 def test_bucket_classify():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=1)
     msgs, _, _ = parse_qce_json(files[0])
@@ -152,6 +166,7 @@ def test_bucket_classify():
 
 
 def test_live_quick_run():
+    _require_sample_data()
     cfg = _get_config()
     files = scan_input_dir(SAMPLE_DATA_DIR, limit_files=3)
     all_msgs = []
@@ -181,6 +196,8 @@ def run_all():
         try:
             test()
             passed += 1
+        except unittest.SkipTest as e:
+            print(f"  SKIP {test.__name__}: {e}")
         except Exception as e:
             print(f"  FAIL {test.__name__}: {e}")
             import traceback
