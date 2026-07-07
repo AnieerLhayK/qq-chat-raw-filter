@@ -103,7 +103,7 @@ def stage_normalize_messages(ctx: Dict[str, Any]) -> StageResult:
 
 def stage_merge_turns(ctx: Dict[str, Any]) -> StageResult:
     """Merge consecutive messages from the same speaker into turns."""
-    from block_builder import messages_to_turns
+    from qq_raw_filter.block_builder import messages_to_turns
 
     messages = ctx.get("messages", [])
     cfg = ctx["config"]
@@ -123,7 +123,7 @@ def stage_merge_turns(ctx: Dict[str, Any]) -> StageResult:
 
 def stage_split_sessions(ctx: Dict[str, Any]) -> StageResult:
     """Split turns into sessions based on time gaps."""
-    from block_builder import turns_to_sessions
+    from qq_raw_filter.block_builder import turns_to_sessions
 
     turns = ctx.get("turns", [])
     cfg = ctx["config"]
@@ -141,7 +141,7 @@ def stage_split_sessions(ctx: Dict[str, Any]) -> StageResult:
 
 def stage_extract_my_blocks(ctx: Dict[str, Any]) -> StageResult:
     """Extract my_blocks from sessions using interruption rules."""
-    from block_builder import extract_my_blocks
+    from qq_raw_filter.block_builder import extract_my_blocks
 
     sessions = ctx.get("sessions", [])
     cfg = ctx["config"]
