@@ -11,6 +11,7 @@ Lifecycle (one-shot per pipeline run):
   lexicon["chaos_lexicon"]        # list of dicts
   lexicon["privacy_lexicon"]      # list of dicts
   lexicon["phrase_stoplist"]      # set of strings
+  lexicon["stoplist_diagnostics"] # source duplicates/conflicts for maintenance
   lexicon["phrase_candidates"]    # list of dicts
   lexicon["drop_sentence_words"]  # list of dicts
   lexicon["mask_words"]           # list of dicts
@@ -34,6 +35,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
@@ -65,28 +67,74 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
     return entries
 
 
-def _load_stoplist(path: Path) -> Set[str]:
-    """Load a stoplist TXT file; one phrase per line.
+def _parse_stoplist_line(line: str) -> str:
+    """Parse one stoplist line, returning empty for comments/blanks."""
+    w = line.strip()
+    if not w or w.startswith("#"):
+        return ""
+    if " #" in w:
+        w = w[:w.index(" #")].strip()
+    return w
+
+
+def _load_stoplist_entries(path: Path) -> List[str]:
+    """Load a stoplist TXT file preserving order and duplicates.
 
     Lines starting with ``#`` are treated as comments and skipped.
     Trailing ``# comments`` on data lines are also stripped.
     """
     if not path.exists():
         logger.warning("Stoplist not found, using empty: %s", path)
-        return set()
-    words: Set[str] = set()
+        return []
+    words: List[str] = []
     with path.open("r", encoding="utf-8") as f:
         for line in f:
-            w = line.strip()
-            if not w or w.startswith("#"):
-                continue
-            # Strip inline comment (space+# at word boundary)
-            if " #" in w:
-                w = w[:w.index(" #")].strip()
+            w = _parse_stoplist_line(line)
             if w:
-                words.add(w)
+                words.append(w)
+    return words
+
+
+def _load_stoplist(path: Path) -> Set[str]:
+    """Load a stoplist TXT file as the runtime de-duplicated set."""
+    words = set(_load_stoplist_entries(path))
     logger.info("Loaded %d stopwords from %s", len(words), path)
     return words
+
+
+def diagnose_stoplist(path: Path, phrase_bank: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Diagnose stoplist maintenance issues without changing runtime behavior."""
+    entries = _load_stoplist_entries(path)
+    counts = Counter(entries)
+    duplicates = [
+        {"phrase": phrase, "count": count}
+        for phrase, count in sorted(counts.items())
+        if count > 1
+    ]
+
+    phrase_labels = {
+        str(entry.get("phrase", "")).strip(): entry.get("label", "unlabeled")
+        for entry in phrase_bank
+        if str(entry.get("phrase", "")).strip()
+    }
+    conflicts = [
+        {"phrase": phrase, "label": phrase_labels[phrase]}
+        for phrase in sorted(set(entries) & set(phrase_labels))
+    ]
+
+    per_length: Dict[str, int] = {}
+    for phrase in entries:
+        bucket = "5plus" if len(phrase) >= 5 else str(len(phrase))
+        per_length[bucket] = per_length.get(bucket, 0) + 1
+
+    return {
+        "total_entries": len(entries),
+        "unique_entries": len(counts),
+        "duplicates": duplicates,
+        "conflicts_with_phrase_bank": conflicts,
+        "conflict_categories": dict(sorted(Counter(c["label"] for c in conflicts).items())),
+        "per_length": dict(sorted(per_length.items())),
+    }
 
 
 def load_lexicons(config: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
@@ -122,9 +170,21 @@ def load_lexicons(config: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
     result["manual_drop"] = _load_jsonl(
         _resolve_path(lex_cfg.get("manual_drop_path", ""), ai_root)
     )
-    result["phrase_stoplist"] = _load_stoplist(
-        _resolve_path(lex_cfg.get("phrase_stoplist_path", ""), ai_root)
+    stoplist_path = _resolve_path(lex_cfg.get("phrase_stoplist_path", ""), ai_root)
+    result["phrase_stoplist"] = _load_stoplist(stoplist_path)
+    result["stoplist_diagnostics"] = diagnose_stoplist(
+        stoplist_path, result["phrase_bank"]
     )
+    if result["stoplist_diagnostics"]["duplicates"]:
+        logger.warning(
+            "Stoplist has %d duplicate source entries; runtime matching is unaffected",
+            len(result["stoplist_diagnostics"]["duplicates"]),
+        )
+    if result["stoplist_diagnostics"]["conflicts_with_phrase_bank"]:
+        logger.warning(
+            "Stoplist overlaps phrase_bank on %d phrases; review lexicon intent",
+            len(result["stoplist_diagnostics"]["conflicts_with_phrase_bank"]),
+        )
 
     # --- By-label index ---
     by_label: Dict[str, List[Dict[str, Any]]] = {}

@@ -10,6 +10,7 @@ from pathlib import Path
 from qq_raw_filter.block_builder import extract_my_blocks, messages_to_turns, turns_to_sessions
 from qq_raw_filter.bucket import classify_block
 from qq_raw_filter.config_loader import default_config
+from qq_raw_filter.lexicon_loader import diagnose_stoplist
 from qq_raw_filter.qce_parser import is_self, parse_qce_json
 from qq_raw_filter.scorer import score_chaos, score_junk, score_privacy, score_style
 
@@ -111,3 +112,35 @@ def test_cli_help_entrypoints() -> None:
         result = subprocess.run(command, cwd=ROOT, capture_output=True, text=True, timeout=20)
         assert result.returncode == 0, result.stderr
         assert "QQ Chat Exporter raw material filter" in result.stdout
+
+
+def test_stoplist_diagnostics_preserve_runtime_behavior(tmp_path: Path) -> None:
+    stoplist = tmp_path / "phrase_stoplist.txt"
+    stoplist.write_text(
+        "\n".join([
+            "# comments are ignored",
+            "哈哈",
+            "哈哈 # inline comment is ignored",
+            "其实",
+            "。",
+            "多字短语测试",
+        ]),
+        encoding="utf-8",
+    )
+    phrase_bank = [
+        {"phrase": "其实", "label": "argument_marker"},
+        {"phrase": "哈哈", "label": "light_interruption"},
+    ]
+
+    diagnostics = diagnose_stoplist(stoplist, phrase_bank)
+
+    assert diagnostics["total_entries"] == 5
+    assert diagnostics["unique_entries"] == 4
+    assert diagnostics["duplicates"] == [{"phrase": "哈哈", "count": 2}]
+    assert diagnostics["conflict_categories"] == {
+        "argument_marker": 1,
+        "light_interruption": 1,
+    }
+    assert diagnostics["per_length"]["1"] == 1
+    assert diagnostics["per_length"]["2"] == 3
+    assert diagnostics["per_length"]["5plus"] == 1
