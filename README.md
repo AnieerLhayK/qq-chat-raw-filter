@@ -1,5 +1,7 @@
 # QQ Chat Raw Material Filter
 
+[简体中文](README.zh-CN.md)
+
 Local-first tooling for transforming QQ Chat Exporter v5 JSON exports into privacy-aware, reviewable material for writing and character-skill workflows. It reads exports without modifying them and produces structured JSONL buckets, audit data, phrase candidates, and tuning evidence.
 
 ## Maintenance model

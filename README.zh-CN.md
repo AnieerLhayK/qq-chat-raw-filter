@@ -1,5 +1,7 @@
 # QQ Chat Raw Material Filter
 
+[English](README.md)
+
 <div align="center">
 
 **结构化分桶引擎** — 将 QQ Chat Exporter 导出的原始聊天记录粗处理为分桶材料，用于后续 character skill 提炼。
