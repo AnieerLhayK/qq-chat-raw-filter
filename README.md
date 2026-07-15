@@ -41,23 +41,23 @@ QQ Chat Exporter           QQ Chat Raw Material Filter       Character Skill
 
 | 项目 | 规则 |
 |------|------|
-| **源代码来源** | 来自工作区 `scripts/raw_material_filter/` 的 subtree 推送 |
+| **源代码来源** | 来自 workspace `packages/character-system/engineering/corpus-preparation/qq-raw-material-filter/` 的公开投影 |
 | **本地仓库** | ❌ 不在本地单独 `git clone`，不建立本地独立仓库 |
-| **远端维护** | ✅ 仅在此远端仓库 (`qq-chat-raw-filter`) 维护，通过 workspace 的 subtree push 同步 |
-| **同步命令** | `git subtree push --prefix=scripts/raw_material_filter filter main --force` |
+| **远端维护** | ✅ 仅在此远端仓库 (`qq-chat-raw-filter`) 发布，workspace 是唯一源代码来源 |
+| **同步命令** | `python scripts/sync_qq_raw_filter_repo.py --push` |
 | **反向同步** | 不反向（远端修改不在工作区内使用） |
 
 ### 为什么这样设计
 
 1. **单一事实来源** — 代码以 workspace 本地为准，远端只是发布镜像
 2. **避免分裂** — 本地两份仓库会导致版本混乱、冲突不断
-3. **简化工作流** — 开发/调试/测试全在 workspace 完成，确认稳定后一次 subtree push 同步到远端
+3. **简化工作流** — 开发/调试/测试全在 workspace 完成，确认稳定后由公开投影脚本同步到远端
 
 ### 如何贡献/修改
 
-1. 在 workspace 本地修改 `scripts/raw_material_filter/` 下的代码
+1. 在 workspace 本地修改 `packages/character-system/engineering/corpus-preparation/qq-raw-material-filter/` 下的代码
 2. 提交到 workspace 仓库（feature 分支）
-3. 合并到 `main` 后执行 subtree push 同步到此远端
+3. 合并到 `main` 后执行 `python scripts/sync_qq_raw_filter_repo.py --push` 同步到此远端
 
 ---
 
@@ -134,17 +134,22 @@ bucket            ── 分桶：candidates / micro_style / need_anonymize / ch
 # 1. 安装（可选，直接运行也可）
 pip install -e .
 
-# 2. 配置身份
-python qce_block_filter.py --me-id 123456789
+# 2. 运行 zf 角色语料（输入 writer_name，不输入 character.zf 整体）
+python qce_block_filter.py --writer-name zf --me-id 123456789
 
-# 3. 完整处理
-python qce_block_filter.py --me-id 123456789
+# 3. 显式覆盖原语料和输出地址（两者都必须非空）
+python qce_block_filter.py --writer-name zf \
+  --input-dir ${WORKSPACE_ROOT}/raw_material/qq/exports/character.zf/raw/qq-chat-exporter-live \
+  --output-dir ${WORKSPACE_ROOT}/raw_material/qq/exports/character.zf/normalized \
+  --me-id 123456789
 
 # 4. 调试模式
-python qce_block_filter.py --me-id 123456789 --debug --limit-files 2
+python qce_block_filter.py --writer-name zf --me-id 123456789 --debug --limit-files 2
 ```
 
-> 详细命令行参数见下方表格。所有路径以 `AI_ROOT=D:/AI` 为基点，可通过环境变量或 `--input-dir` / `--output-dir` 覆盖。
+> 默认路径为 `raw_material/qq/exports/character.<writer_name>/raw/qq-chat-exporter-live`
+> 与 `raw_material/qq/exports/character.<writer_name>/normalized`；
+> `writer_name`、输入地址或输出地址为空时程序会报错并停止。
 
 ---
 
@@ -226,6 +231,25 @@ pytest tests/ -v
 ```
 
 需要 `pip install pytest`。
+
+## Local Review Feedback
+
+Review decisions remain in the private lexicon directory and are never part of
+this repository.  The configured file is
+`raw_material/qq/exports/character.<writer_name>/lexicons/review_decisions.jsonl`
+relative to `AI_ROOT`.
+After each run, `review_samples/review_decisions.template.jsonl` contains the
+stable block IDs selected for review. Copy selected records into the private
+decision file and replace `pending` with `keep` or `drop`:
+
+```json
+{"kind":"block","key":"review-id-from-template","decision":"keep","reason":"useful reflective turn"}
+{"kind":"phrase","key":"candidate phrase","decision":"drop","reason":"generic chat filler"}
+```
+
+Later records for the same phrase or block supersede earlier records. A block
+`keep` cannot override a prior privacy, explicit filter, or dedup rejection.
+Phrase clustering is review-only and does not merge or promote terms by itself.
 
 ---
 

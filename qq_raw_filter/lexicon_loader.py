@@ -39,6 +39,8 @@ from collections import Counter
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set
 
+from qq_raw_filter.review_feedback import load_review_decisions
+
 logger = logging.getLogger(__name__)
 
 
@@ -54,7 +56,10 @@ def _load_jsonl(path: Path) -> List[Dict[str, Any]]:
         logger.warning("Lexicon file not found, using empty: %s", path)
         return []
     entries: List[Dict[str, Any]] = []
-    with path.open("r", encoding="utf-8") as f:
+    # ``phrase_candidates.jsonl`` may be produced by tools that emit a UTF-8
+    # BOM.  ``utf-8-sig`` consumes it on the first line without changing any
+    # subsequent entries, preventing a valid candidate from being dropped.
+    with path.open("r", encoding="utf-8-sig") as f:
         for lineno, line in enumerate(f, 1):
             line = line.strip()
             if not line:
@@ -170,6 +175,33 @@ def load_lexicons(config: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
     result["manual_drop"] = _load_jsonl(
         _resolve_path(lex_cfg.get("manual_drop_path", ""), ai_root)
     )
+    review_cfg = config.get("review", {})
+    result["review_decisions"] = load_review_decisions(
+        _resolve_path(review_cfg.get("decisions_path", ""), ai_root)
+    )
+    manual_keep_phrases = {
+        str(e.get("phrase", "")).strip() for e in result["manual_keep"]
+        if str(e.get("phrase", "")).strip()
+    }
+    manual_drop_phrases = {
+        str(e.get("phrase", "")).strip() for e in result["manual_drop"]
+        if str(e.get("phrase", "")).strip()
+    }
+    for phrase, entry in result["review_decisions"]["phrase"].items():
+        if entry.get("decision") == "keep":
+            manual_drop_phrases.discard(phrase)
+            manual_keep_phrases.add(phrase)
+        else:
+            manual_keep_phrases.discard(phrase)
+            manual_drop_phrases.add(phrase)
+    # A confirmed phrase drop must not keep inflating style scores through a
+    # stale phrase_bank entry.
+    result["phrase_bank"] = [
+        entry for entry in result["phrase_bank"]
+        if str(entry.get("phrase", "")).strip() not in manual_drop_phrases
+    ]
+    result["manual_keep_phrases"] = manual_keep_phrases
+    result["manual_drop_phrases"] = manual_drop_phrases
     stoplist_path = _resolve_path(lex_cfg.get("phrase_stoplist_path", ""), ai_root)
     result["phrase_stoplist"] = _load_stoplist(stoplist_path)
     result["stoplist_diagnostics"] = diagnose_stoplist(

@@ -271,6 +271,7 @@ def turns_to_sessions(
 def extract_my_blocks(
     sessions: List[Session],
     config: Dict[str, Any],
+    block_id_prefix: str = "",
 ) -> Tuple[List[MyBlock], List[str]]:
     """Extract my_blocks from sessions using interruption rules.
 
@@ -318,7 +319,7 @@ def extract_my_blocks(
                 continue
 
             block = MyBlock(
-                block_id=f"{session_id}_block_{block_counter:03d}",
+                block_id=f"{block_id_prefix}{session_id}_block_{block_counter:03d}",
                 session_id=session_id,
                 source_file=session.source_file,
             )

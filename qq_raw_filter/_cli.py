@@ -29,11 +29,11 @@ from qq_raw_filter.pipeline import run_pipeline, PipelineAbortError
 logger = logging.getLogger(__name__)
 
 def _get_ai_root() -> Path:
-    """Resolve AI_ROOT: env var AI_ROOT > platform default (D:/AI)."""
+    """Resolve AI_ROOT: env var AI_ROOT > platform default (${WORKSPACE_ROOT})."""
     env_root = os.environ.get("AI_ROOT")
     if env_root:
         return Path(env_root).resolve()
-    return Path("D:/AI").resolve()
+    return Path("${WORKSPACE_ROOT}").resolve()
 
 AI_ROOT = _get_ai_root()
 
@@ -61,6 +61,11 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
         ),
     )
     parser.add_argument("--config", default=None, help="Path to filter_config.toml")
+    parser.add_argument(
+        "--writer-name",
+        default=None,
+        help="Character writer name; resolves character.<writer_name> corpus paths",
+    )
     parser.add_argument("--input-dir", default=None, help="Override input directory")
     parser.add_argument("--output-dir", default=None, help="Override output directory")
     parser.add_argument("--me-id", nargs="*", default=[], help="My QQ number(s) or UID(s)")
@@ -85,7 +90,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
 def _resolve_config_path(custom_path: Optional[str]) -> Path:
     if custom_path:
         return Path(custom_path)
-    return Path(__file__).resolve().parent / "filter_config.toml"
+    # The package lives in ``qq_raw_filter/`` while the shipped TOML sits at
+    # the project root beside the public wrapper.  Looking beside this module
+    # silently selected ``default_config()`` instead of the tuned TOML.
+    return Path(__file__).resolve().parent.parent / "filter_config.toml"
 
 
 def _make_run_dir(output_base: Path) -> Path:
@@ -109,13 +117,27 @@ def main(argv: Optional[List[str]] = None) -> int:
         return 1
 
     # Apply CLI overrides
+    writer_name = args.writer_name
+    if writer_name is None:
+        writer_name = config.get("character", {}).get("writer_name", "")
+    writer_name = str(writer_name).strip()
+    if not writer_name:
+        logger.error("Missing writer_name: use --writer-name <name> or [character].writer_name.")
+        return 1
+    config.setdefault("character", {})["writer_name"] = writer_name
+
+    for option_name, option_value in (("input_dir", args.input_dir), ("output_dir", args.output_dir)):
+        if option_value is not None and not str(option_value).strip():
+            logger.error("Missing %s address: provide a non-empty --%s value.", option_name, option_name.replace("_", "-"))
+            return 1
+
     if args.me_id:
         config.setdefault("identity", {})["me_ids"] = list(args.me_id)
     if args.me_name:
         config.setdefault("identity", {})["me_names"] = list(args.me_name)
-    if args.input_dir:
+    if args.input_dir is not None:
         config.setdefault("path", {})["input_dir"] = args.input_dir
-    if args.output_dir:
+    if args.output_dir is not None:
         config.setdefault("path", {})["output_dir"] = args.output_dir
 
     config = resolve_paths(config, AI_ROOT)

@@ -23,11 +23,11 @@ from qq_raw_filter.block_builder import MyBlock
 logger = logging.getLogger(__name__)
 
 
-def _sample(blocks: List[MyBlock], sample_size: int) -> List[MyBlock]:
+def _sample(blocks: List[MyBlock], sample_size: int, rng: random.Random) -> List[MyBlock]:
     """Take a random sample of up to sample_size blocks."""
     if len(blocks) <= sample_size:
         return list(blocks)
-    return random.sample(blocks, sample_size)
+    return rng.sample(blocks, sample_size)
 
 
 def _write_jsonl(blocks: List[MyBlock], path: Path) -> int:
@@ -45,6 +45,7 @@ def write_stratified_samples(
     bucketed: Dict[str, List[MyBlock]],
     review_dir: Path,
     sample_size: int,
+    sample_seed: int = 20260710,
 ) -> int:
     """Write stratified review sample files.
 
@@ -52,6 +53,21 @@ def write_stratified_samples(
         Number of sample files written.
     """
     n_written = 0
+    rng = random.Random(sample_seed)
+    decision_template: List[Dict[str, str]] = []
+
+    def write_sampled(sampled: List[MyBlock], filename: str) -> None:
+        nonlocal n_written
+        if not sampled:
+            return
+        _write_jsonl(sampled, review_dir / filename)
+        decision_template.extend({
+            "kind": "block",
+            "key": str(block.metrics.get("review_id", "")),
+            "decision": "pending",
+            "reason": "",
+        } for block in sampled if block.metrics.get("review_id"))
+        n_written += 1
 
     # Candidates — stratified by style score
     candidates = bucketed.get("candidates", [])
@@ -61,10 +77,7 @@ def write_stratified_samples(
                  if 0 < b.scores.get("style_score", 0) < 8]
 
     for tier_name, tier_blocks in [("high_score", high_score), ("low_score", low_score)]:
-        sampled = _sample(tier_blocks, sample_size // 2)
-        if sampled:
-            _write_jsonl(sampled, review_dir / f"candidates_{tier_name}_sample.jsonl")
-            n_written += 1
+        write_sampled(_sample(tier_blocks, sample_size // 2, rng), f"candidates_{tier_name}_sample.jsonl")
 
     # Rejected with high style score (potential misclassification)
     rejected = bucketed.get("rejected", [])
@@ -73,29 +86,27 @@ def write_stratified_samples(
         if b.scores.get("style_score", 0) >= 4
     ]
     if high_style_rejected:
-        sampled = _sample(high_style_rejected, sample_size)
-        _write_jsonl(sampled, review_dir / "rejected_high_style_score_sample.jsonl")
-        n_written += 1
+        write_sampled(_sample(high_style_rejected, sample_size, rng), "rejected_high_style_score_sample.jsonl")
 
     # Chaos style
     chaos = bucketed.get("chaos_style", [])
     if chaos:
-        sampled = _sample(chaos, sample_size)
-        _write_jsonl(sampled, review_dir / "chaos_style_sample.jsonl")
-        n_written += 1
+        write_sampled(_sample(chaos, sample_size, rng), "chaos_style_sample.jsonl")
 
     # Need anonymize
     need_anon = bucketed.get("need_anonymize", [])
     if need_anon:
-        sampled = _sample(need_anon, sample_size)
-        _write_jsonl(sampled, review_dir / "need_anonymize_sample.jsonl")
-        n_written += 1
+        write_sampled(_sample(need_anon, sample_size, rng), "need_anonymize_sample.jsonl")
 
     # Debatable
     debatable = bucketed.get("debatable", [])
     if debatable:
-        sampled = _sample(debatable, sample_size)
-        _write_jsonl(sampled, review_dir / "debatable_sample.jsonl")
+        write_sampled(_sample(debatable, sample_size, rng), "debatable_sample.jsonl")
+
+    if decision_template:
+        with (review_dir / "review_decisions.template.jsonl").open("w", encoding="utf-8") as handle:
+            for item in decision_template:
+                handle.write(json.dumps(item, ensure_ascii=False) + "\n")
         n_written += 1
 
     return n_written

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,8 +31,13 @@ from typing import Any, Dict, List, Optional, Set
 
 # Default paths
 SCRIPT_DIR = Path(__file__).resolve().parent
-LEXICON_DIR = Path("D:/AI/raw_material/qq/exports/lexicons")
+LEXICON_DIR = Path()
 ARCHIVE_DIR = LEXICON_DIR / "archive"
+
+
+def _lexicon_dir(writer_name: str, ai_root: Optional[str] = None) -> Path:
+    root = Path(ai_root or os.environ.get("AI_ROOT", "${WORKSPACE_ROOT}"))
+    return root / "raw_material" / "qq" / "exports" / f"character.{writer_name}" / "lexicons"
 
 
 def load_audit(audit_path: Path) -> List[Dict[str, Any]]:
@@ -144,8 +150,10 @@ def generate_active(
                                       "verified_filter_word"):
             promoted_phrases.add(e["term"])
         elif e["suggested_status"] == "keep_as_candidate":
-            # Also allow candidate-level words to stay if they have some data
-            if e["freq_total"] >= 3:
+            # Candidate-level terms need positive evidence in the high-value
+            # bucket. Frequency alone would retain generic chat vocabulary.
+            candidate_rate = e.get("candidate_rate", 0.0)
+            if e["freq_total"] >= 3 and candidate_rate >= 0.15:
                 promoted_phrases.add(e["term"])
 
     stats: Dict[str, Any] = {
@@ -167,26 +175,23 @@ def generate_active(
     if "phrase_bank.jsonl" in archive_entries:
         for entry in archive_entries["phrase_bank.jsonl"]:
             phrase = entry.get("phrase", "")
-            if phrase in promoted_phrases:
+            audit = audit_map.get(phrase, {})
+            categories = audit.get("all_categories", [audit.get("old_category", "")])
+            # Active style vocabulary must be an archived style marker with
+            # positive candidate-bucket evidence. Generic content words and
+            # mined n-grams remain review candidates only.
+            if (
+                phrase in promoted_phrases
+                and any(str(category).startswith("style_markers.") for category in categories)
+                and audit.get("freq_total", 0) >= 3
+                and audit.get("candidate_rate", 0.0) >= 0.15
+            ):
                 cleaned = clean_entry(entry, "frequency_verified")
                 phrase_bank.append(cleaned)
 
-    # Add high-keyness new phrases from mining
-    for pc in phrase_candidates:
-        if pc.get("style_keyness", 0) >= 2.0 and pc.get("freq", 0) >= 5:
-            label = "mined_style_phrase"
-            if pc.get("chaos_rate", 0) > 0.5:
-                continue  # chaos-heavy phrases go to chaos lexicon
-            if pc.get("privacy_bucket_rate", 0) > 0.3:
-                continue  # privacy-heavy phrases handled separately
-            phrase_bank.append({
-                "phrase": pc["phrase"],
-                "label": label,
-                "source": "phrase_mining_auto",
-                "status": "auto_candidate",
-                "allowed_in_skill": True,
-            })
-            stats["phrase_mining_new"] += 1
+    # New n-grams intentionally remain in phrase_candidates.jsonl.  They do
+    # not become active scoring markers without a later evidence pass.
+    phrase_bank = list({entry.get("phrase"): entry for entry in phrase_bank}.values())
 
     _write_jsonl_if(phrase_bank, output_dir / "phrase_bank.jsonl", dry_run)
     stats["by_file"]["phrase_bank.jsonl"] = len(phrase_bank)
@@ -214,6 +219,7 @@ def generate_active(
             })
             stats["phrase_mining_new"] += 1
 
+    chaos_lexicon = list({entry.get("phrase"): entry for entry in chaos_lexicon}.values())
     _write_jsonl_if(chaos_lexicon, output_dir / "chaos_lexicon.jsonl", dry_run)
     stats["by_file"]["chaos_lexicon.jsonl"] = len(chaos_lexicon)
 
@@ -243,6 +249,7 @@ def generate_active(
             })
             stats["phrase_mining_new"] += 1
 
+    privacy_lexicon = list({entry.get("phrase"): entry for entry in privacy_lexicon}.values())
     _write_jsonl_if(privacy_lexicon, output_dir / "privacy_lexicon.jsonl", dry_run)
     stats["by_file"]["privacy_lexicon.jsonl"] = len(privacy_lexicon)
 
@@ -291,7 +298,16 @@ def generate_active(
     # 7. phrase_candidates.jsonl — new phrases + demoted archive words
     candidates: List[Dict[str, Any]] = []
     for pc in phrase_candidates:
-        if pc.get("style_keyness", 0) >= 1.0 and pc.get("freq", 0) >= 3:
+        bucket_freq = pc.get("bucket_freq", {})
+        freq = pc.get("freq", 0)
+        candidate_rate = bucket_freq.get("candidates", 0) / max(freq, 1)
+        if (
+            pc.get("style_keyness", 0) >= 2.0
+            and freq >= 5
+            and candidate_rate >= 0.15
+            and pc.get("privacy_bucket_rate", 0) <= 0.30
+            and pc.get("chaos_rate", 0) <= 0.50
+        ):
             candidates.append(pc)
     # Add demoted archive words
     for e in audit_entries:
@@ -307,6 +323,7 @@ def generate_active(
             })
             stats["candidates_written"] += 1
 
+    candidates = list({entry.get("phrase"): entry for entry in candidates}.values())
     _write_jsonl_if(candidates, output_dir / "phrase_candidates.jsonl", dry_run)
     stats["by_file"]["phrase_candidates.jsonl"] = len(candidates)
 
@@ -408,6 +425,10 @@ def main() -> int:
         description="Generate active lexicon files from frequency audit results")
     parser.add_argument("--audit", required=True,
                         help="Path to legacy_lexicon_frequency_audit.jsonl")
+    parser.add_argument("--writer-name", required=True,
+                        help="Character writer name used in character.<writer_name>")
+    parser.add_argument("--ai-root", default=None,
+                        help="AI root directory (default: AI_ROOT or ${WORKSPACE_ROOT})")
     parser.add_argument("--output-dir", default=None,
                         help="Output directory (default: lexicons/generated/ or lexicons/ with --force)")
     parser.add_argument("--force", action="store_true",
@@ -415,6 +436,14 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true",
                         help="Preview only, do not write files")
     args = parser.parse_args()
+
+    if not args.writer_name.strip() or any(part in args.writer_name for part in ("/", "\\", "..")):
+        print("ERROR: writer_name must be a non-empty simple directory name")
+        return 1
+
+    global LEXICON_DIR, ARCHIVE_DIR
+    LEXICON_DIR = _lexicon_dir(args.writer_name.strip(), args.ai_root)
+    ARCHIVE_DIR = LEXICON_DIR / "archive"
 
     audit_path = Path(args.audit)
     if not audit_path.exists():

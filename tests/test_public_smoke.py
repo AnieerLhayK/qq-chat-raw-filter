@@ -7,9 +7,12 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from qq_raw_filter.block_builder import extract_my_blocks, messages_to_turns, turns_to_sessions
 from qq_raw_filter.bucket import classify_block
-from qq_raw_filter.config_loader import default_config
+from qq_raw_filter._cli import _resolve_config_path
+from qq_raw_filter.config_loader import ConfigValidationError, default_config, load_config, resolve_paths
 from qq_raw_filter.lexicon_loader import diagnose_stoplist
 from qq_raw_filter.qce_parser import is_self, parse_qce_json
 from qq_raw_filter.scorer import score_chaos, score_junk, score_privacy, score_style
@@ -114,6 +117,34 @@ def test_cli_help_entrypoints() -> None:
         assert "QQ Chat Exporter raw material filter" in result.stdout
 
 
+def test_cli_uses_the_bundled_config_by_default() -> None:
+    config_path = _resolve_config_path(None)
+
+    assert config_path == ROOT / "filter_config.toml"
+    assert config_path.is_file()
+    assert load_config(config_path)["my_block"]["min_my_block_chars"] == 20
+
+
+def test_character_writer_name_resolves_all_scoped_paths() -> None:
+    cfg = default_config()
+    cfg["character"]["writer_name"] = "writerA"
+
+    resolved = resolve_paths(cfg, Path("${WORKSPACE_ROOT}"))
+
+    assert resolved["path"]["input_dir"].endswith(
+        "raw_material\\qq\\exports\\character.writerA\\raw\\qq-chat-exporter-live"
+    )
+    assert resolved["lexicon"]["phrase_bank_path"].endswith(
+        "raw_material\\qq\\exports\\character.writerA\\lexicons\\phrase_bank.jsonl"
+    )
+
+
+def test_character_paths_require_writer_name() -> None:
+    cfg = default_config()
+    with pytest.raises(ConfigValidationError, match="writer_name"):
+        resolve_paths(cfg, Path("${WORKSPACE_ROOT}"))
+
+
 def test_stoplist_diagnostics_preserve_runtime_behavior(tmp_path: Path) -> None:
     stoplist = tmp_path / "phrase_stoplist.txt"
     stoplist.write_text(
@@ -144,3 +175,12 @@ def test_stoplist_diagnostics_preserve_runtime_behavior(tmp_path: Path) -> None:
     assert diagnostics["per_length"]["1"] == 1
     assert diagnostics["per_length"]["2"] == 3
     assert diagnostics["per_length"]["5plus"] == 1
+
+
+def test_jsonl_loader_accepts_utf8_bom(tmp_path: Path) -> None:
+    from qq_raw_filter.lexicon_loader import _load_jsonl
+
+    path = tmp_path / "candidate.jsonl"
+    path.write_text('{"phrase": "保留候选"}\n', encoding="utf-8-sig")
+
+    assert _load_jsonl(path) == [{"phrase": "保留候选"}]

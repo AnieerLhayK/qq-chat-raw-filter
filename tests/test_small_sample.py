@@ -23,7 +23,7 @@ from qq_raw_filter.scorer import score_style, score_privacy, score_junk, score_c
 from qq_raw_filter.bucket import classify_block
 
 
-SAMPLE_DATA_DIR = Path("D:/AI/raw_material/qq/exports/raw/qq-chat-exporter-live")
+SAMPLE_DATA_DIR = Path("${WORKSPACE_ROOT}/raw_material/qq/exports/character.zf/raw/qq-chat-exporter-live")
 
 
 def _require_sample_data():

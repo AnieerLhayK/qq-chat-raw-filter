@@ -16,13 +16,19 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-LEXICON_DIR = Path("D:/AI/raw_material/qq/exports/lexicons")
+LEXICON_DIR = Path()
 ARCHIVE_DIR = LEXICON_DIR / "archive"
+
+
+def _lexicon_dir(writer_name: str, ai_root: Optional[str] = None) -> Path:
+    root = Path(ai_root or os.environ.get("AI_ROOT", "${WORKSPACE_ROOT}"))
+    return root / "raw_material" / "qq" / "exports" / f"character.{writer_name}" / "lexicons"
 
 # Map: source filename → (archive filename, old_category factory, enrichment_fields)
 # old_category factory is a function: (entry: dict) -> str
@@ -309,7 +315,19 @@ def main() -> int:
                         help="Overwrite existing archive files")
     parser.add_argument("--dry-run", action="store_true",
                         help="Preview only, don't write files")
+    parser.add_argument("--writer-name", required=True,
+                        help="Character writer name used in character.<writer_name>")
+    parser.add_argument("--ai-root", default=None,
+                        help="AI root directory (default: AI_ROOT or ${WORKSPACE_ROOT})")
     args = parser.parse_args()
+
+    if not args.writer_name.strip() or any(part in args.writer_name for part in ("/", "\\", "..")):
+        print("ERROR: writer_name must be a non-empty simple directory name")
+        return 1
+
+    global LEXICON_DIR, ARCHIVE_DIR
+    LEXICON_DIR = _lexicon_dir(args.writer_name.strip(), args.ai_root)
+    ARCHIVE_DIR = LEXICON_DIR / "archive"
 
     print(f"Lexicon Archive Migration")
     print(f"  Source: {LEXICON_DIR}")

@@ -94,11 +94,13 @@ def classify_block(block: MyBlock, config: Dict[str, Any]) -> Tuple[str, List[st
 
             # Collect which gates would fail
             gate_failures = []
-            if chaos >= 2:
+            max_chaos = rc.get("max_chaos_ratio_for_candidate", 0.30) * 10
+            if chaos >= max_chaos:
                 gate_failures.append("chaos")
             if junk >= 3:
                 gate_failures.append("junk")
-            if my_ratio < 0.55:
+            min_my_ratio = 1 - rc.get("max_other_char_ratio_inside_my_block", 0.45)
+            if my_ratio < min_my_ratio:
                 gate_failures.append("ratio")
 
             if gate_failures:
@@ -162,9 +164,9 @@ def classify_all(blocks: List[MyBlock], config: Dict[str, Any]) -> Dict[str, Lis
         "rejected": [],
     }
 
-    # Cap debatable bucket
+    # The cap is applied after all blocks are ranked, so input traversal order
+    # cannot silently decide which uncertain-but-promising samples survive.
     debatable_max = config.get("score", {}).get("debatable_max_per_run", 200)
-    debatable_count = 0
 
     for block in blocks:
         # Blocks pre-classified upstream (e.g. sub-threshold blocks from
@@ -176,23 +178,40 @@ def classify_all(blocks: List[MyBlock], config: Dict[str, Any]) -> Dict[str, Lis
                 buckets["rejected"].append(block)
             continue
 
+        if block.metrics.get("manual_review_decision") == "keep":
+            privacy_medium = config.get("score", {}).get("privacy_medium_threshold", 5)
+            if block.scores.get("privacy_score", 0) < privacy_medium:
+                block.bucket = "candidates"
+                block.reasons.append("manual_review_keep")
+                buckets["candidates"].append(block)
+                continue
+            block.reasons.append("manual_review_keep_deferred_to_privacy")
+
         bucket, reasons = classify_block(block, config)
         block.reasons = reasons
-
-        # Enforce debatable cap
-        if bucket == "debatable":
-            if debatable_count >= debatable_max:
-                bucket = "rejected"
-                reasons.append("debatable_capped")
-                block.bucket = "rejected"
-                buckets["rejected"].append(block)
-                continue
-            debatable_count += 1
 
         if bucket in buckets:
             buckets[bucket].append(block)
         else:
             logger.warning("Unknown bucket %s for block %s", bucket, block.block_id)
+            buckets["rejected"].append(block)
+
+    debatable = buckets["debatable"]
+    if len(debatable) > debatable_max:
+        ranked = sorted(
+            debatable,
+            key=lambda block: (
+                -block.scores.get("style_score", 0),
+                block.scores.get("junk_score", 0),
+                block.scores.get("chaos_score", 0),
+                -block.metrics.get("my_char_ratio", 0),
+                -block.metrics.get("my_char_count", 0),
+            ),
+        )
+        buckets["debatable"] = ranked[:debatable_max]
+        for block in ranked[debatable_max:]:
+            block.bucket = "rejected"
+            block.reasons.append("debatable_overflow_prioritized")
             buckets["rejected"].append(block)
 
     return buckets

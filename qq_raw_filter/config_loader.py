@@ -94,6 +94,14 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
             if k in ident and not ident[k]:
                 pass  # empty is valid (will be configured later)
 
+    # --- character workspace ---
+    if "character" in cfg:
+        writer_name = cfg["character"].get("writer_name", "")
+        if not isinstance(writer_name, str):
+            errors.append("character.writer_name: expected string")
+        elif writer_name and ("/" in writer_name or "\\" in writer_name or ".." in writer_name):
+            errors.append("character.writer_name: must be a simple directory name")
+
     # --- time ---
     if "time" in cfg:
         t = cfg["time"]
@@ -193,6 +201,14 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
         if "max_per_run" in d and not isinstance(d["max_per_run"], int):
             errors.append("debatable.max_per_run: expected int")
 
+    # --- review ---
+    if "review" in cfg:
+        review = cfg["review"]
+        if "decisions_path" in review and not isinstance(review["decisions_path"], str):
+            errors.append("review.decisions_path: expected string path")
+        if "sample_seed" in review and not isinstance(review["sample_seed"], int):
+            errors.append("review.sample_seed: expected int")
+
     # --- style_tags ---
     if "style_tags" in cfg:
         st = cfg["style_tags"]
@@ -250,6 +266,34 @@ def validate_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
                        "update_phrase_bank"):
                 if k in po and not isinstance(po[k], bool):
                     errors.append(f"phrase_mining.output.{k}: expected bool")
+        if "keyness" in pm:
+            keyness = pm["keyness"]
+            for k in ("enabled", "compare_candidates_against_rejected"):
+                if k in keyness and not isinstance(keyness[k], bool):
+                    errors.append(f"phrase_mining.keyness.{k}: expected bool")
+            if "min_keyness" in keyness and not isinstance(keyness["min_keyness"], (int, float)):
+                errors.append("phrase_mining.keyness.min_keyness: expected number")
+        if "clustering" in pm:
+            clustering = pm["clustering"]
+            if "enabled" in clustering and not isinstance(clustering["enabled"], bool):
+                errors.append("phrase_mining.clustering.enabled: expected bool")
+            if "min_surface_overlap" in clustering and not isinstance(clustering["min_surface_overlap"], (int, float)):
+                errors.append("phrase_mining.clustering.min_surface_overlap: expected number")
+            elif "min_surface_overlap" in clustering:
+                _check_range(clustering["min_surface_overlap"], "phrase_mining.clustering.min_surface_overlap", 0, 1)
+        # auto_promote (v0.3.1)
+        if "auto_promote" in pm:
+            ap = pm["auto_promote"]
+            for k in ("enabled",):
+                if k in ap and not isinstance(ap[k], bool):
+                    errors.append(f"phrase_mining.auto_promote.{k}: expected bool")
+            for k in ("min_style_keyness", "min_pmi", "min_entropy",
+                       "max_chaos_rate", "max_privacy_rate"):
+                if k in ap and not isinstance(ap[k], (int, float)):
+                    errors.append(f"phrase_mining.auto_promote.{k}: expected number")
+            for k in ("min_freq", "max_per_run"):
+                if k in ap and not isinstance(ap[k], int):
+                    errors.append(f"phrase_mining.auto_promote.{k}: expected int")
 
     # --- tuning_advice ---
     if "tuning_advice" in cfg:
@@ -273,9 +317,10 @@ def default_config() -> Dict[str, Any]:
             "description": "QQ character skill raw material filter config — lexicon registry mode",
         },
         "identity": {"me_ids": [], "me_names": []},
+        "character": {"writer_name": ""},
         "path": {
-            "input_dir": "raw_material/qq/exports/raw/qq-chat-exporter-live",
-            "output_dir": "raw_material/qq/exports/normalized",
+            "input_dir": "raw_material/qq/exports/character.{writer_name}/raw/qq-chat-exporter-live",
+            "output_dir": "raw_material/qq/exports/character.{writer_name}/normalized",
         },
         "time": {
             "session_gap_minutes": 20,
@@ -343,6 +388,10 @@ def default_config() -> Dict[str, Any]:
             "enable": True,
             "max_per_run": 200,
         },
+        "review": {
+            "decisions_path": "raw_material/qq/exports/character.{writer_name}/lexicons/review_decisions.jsonl",
+            "sample_seed": 20260710,
+        },
         "style_tags": {
             "enable": True,
             "argument_markers": [],
@@ -356,26 +405,26 @@ def default_config() -> Dict[str, Any]:
         },
         "lexicon": {
             # Active lexicon paths (v0.3: used in matching)
-            "phrase_bank_path": "raw_material/qq/exports/lexicons/phrase_bank.jsonl",
-            "phrase_candidates_path": "raw_material/qq/exports/lexicons/phrase_candidates.jsonl",
-            "phrase_stoplist_path": "raw_material/qq/exports/lexicons/phrase_stoplist.txt",
-            "privacy_lexicon_path": "raw_material/qq/exports/lexicons/privacy_lexicon.jsonl",
-            "chaos_lexicon_path": "raw_material/qq/exports/lexicons/chaos_lexicon.jsonl",
-            "drop_sentence_words_path": "raw_material/qq/exports/lexicons/drop_sentence_words.jsonl",
-            "mask_words_path": "raw_material/qq/exports/lexicons/mask_words.jsonl",
-            "manual_keep_path": "raw_material/qq/exports/lexicons/manual_keep.jsonl",
-            "manual_drop_path": "raw_material/qq/exports/lexicons/manual_drop.jsonl",
+            "phrase_bank_path": "raw_material/qq/exports/character.{writer_name}/lexicons/phrase_bank.jsonl",
+            "phrase_candidates_path": "raw_material/qq/exports/character.{writer_name}/lexicons/phrase_candidates.jsonl",
+            "phrase_stoplist_path": "raw_material/qq/exports/character.{writer_name}/lexicons/phrase_stoplist.txt",
+            "privacy_lexicon_path": "raw_material/qq/exports/character.{writer_name}/lexicons/privacy_lexicon.jsonl",
+            "chaos_lexicon_path": "raw_material/qq/exports/character.{writer_name}/lexicons/chaos_lexicon.jsonl",
+            "drop_sentence_words_path": "raw_material/qq/exports/character.{writer_name}/lexicons/drop_sentence_words.jsonl",
+            "mask_words_path": "raw_material/qq/exports/character.{writer_name}/lexicons/mask_words.jsonl",
+            "manual_keep_path": "raw_material/qq/exports/character.{writer_name}/lexicons/manual_keep.jsonl",
+            "manual_drop_path": "raw_material/qq/exports/character.{writer_name}/lexicons/manual_drop.jsonl",
             # Archive paths (v0.3: read-only, audit only, never used for matching)
             "archive": {
-                "phrase_bank_path": "raw_material/qq/exports/lexicons/archive/phrase_bank_archive.jsonl",
-                "phrase_candidates_path": "raw_material/qq/exports/lexicons/archive/phrase_candidates_archive.jsonl",
-                "phrase_stoplist_path": "raw_material/qq/exports/lexicons/archive/phrase_stoplist_archive.txt",
-                "privacy_lexicon_path": "raw_material/qq/exports/lexicons/archive/privacy_lexicon_archive.jsonl",
-                "chaos_lexicon_path": "raw_material/qq/exports/lexicons/archive/chaos_lexicon_archive.jsonl",
-                "drop_sentence_words_path": "raw_material/qq/exports/lexicons/archive/drop_sentence_words_archive.jsonl",
-                "mask_words_path": "raw_material/qq/exports/lexicons/archive/mask_words_archive.jsonl",
-                "manual_keep_path": "raw_material/qq/exports/lexicons/archive/manual_keep_archive.jsonl",
-                "manual_drop_path": "raw_material/qq/exports/lexicons/archive/manual_drop_archive.jsonl",
+                "phrase_bank_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/phrase_bank_archive.jsonl",
+                "phrase_candidates_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/phrase_candidates_archive.jsonl",
+                "phrase_stoplist_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/phrase_stoplist_archive.txt",
+                "privacy_lexicon_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/privacy_lexicon_archive.jsonl",
+                "chaos_lexicon_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/chaos_lexicon_archive.jsonl",
+                "drop_sentence_words_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/drop_sentence_words_archive.jsonl",
+                "mask_words_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/mask_words_archive.jsonl",
+                "manual_keep_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/manual_keep_archive.jsonl",
+                "manual_drop_path": "raw_material/qq/exports/character.{writer_name}/lexicons/archive/manual_drop_archive.jsonl",
             },
             # Audit configuration (v0.3)
             "audit": {
@@ -394,7 +443,7 @@ def default_config() -> Dict[str, Any]:
             "min_pmi_4gram": 4.0,
             "min_entropy": 0.5,
             "top_k_each_length": 500,
-            "scan_sources": ["my_text", "fragments", "my_blocks"],
+            "scan_sources": ["my_text"],
             "bucket_weight": {
                 "candidates": 1.0,
                 "micro_style": 1.2,
@@ -407,12 +456,26 @@ def default_config() -> Dict[str, Any]:
                 "compare_candidates_against_rejected": True,
                 "min_keyness": 1.5,
             },
+            "clustering": {
+                "enabled": True,
+                "min_surface_overlap": 0.5,
+            },
             "output": {
                 "write_phrase_freq_by_length": True,
                 "write_phrase_candidates": True,
                 "write_phrase_report": True,
                 "update_auto_phrase_candidates": True,
                 "update_phrase_bank": False,
+            },
+            "auto_promote": {
+                "enabled": True,
+                "min_style_keyness": 3.0,
+                "min_pmi": 3.0,
+                "min_entropy": 1.0,
+                "min_freq": 10,
+                "max_chaos_rate": 0.15,
+                "max_privacy_rate": 0.15,
+                "max_per_run": 30,
             },
         },
     }
@@ -427,9 +490,21 @@ def resolve_paths(cfg: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
       - phrase_mining.* (no file paths)
     Modifies cfg in-place and returns cfg.
     """
+    writer_name = str(cfg.get("character", {}).get("writer_name", "")).strip()
+
+    def expand_writer(raw: str) -> str:
+        if "{writer_name}" not in raw:
+            return raw
+        if not writer_name:
+            raise ConfigValidationError(
+                "character.writer_name is required to resolve character-scoped paths"
+            )
+        return raw.replace("{writer_name}", writer_name)
+
     if "path" in cfg:
         for key in ("input_dir", "output_dir"):
-            raw = cfg["path"].get(key, "")
+            raw = expand_writer(str(cfg["path"].get(key, "")))
+            cfg["path"][key] = raw
             if raw:
                 p = Path(raw)
                 if not p.is_absolute():
@@ -444,7 +519,11 @@ def resolve_paths(cfg: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
             if isinstance(val, dict):
                 # Handle nested subsections (archive, audit)
                 for sub_key in list(val.keys()):
-                    raw = val[sub_key]
+                    raw = (
+                        expand_writer(val[sub_key])
+                        if isinstance(val[sub_key], str)
+                        else val[sub_key]
+                    )
                     if raw and isinstance(raw, str):
                         p = Path(raw)
                         if not p.is_absolute():
@@ -453,11 +532,18 @@ def resolve_paths(cfg: Dict[str, Any], ai_root: Path) -> Dict[str, Any]:
                             val[sub_key] = str(p)
             elif isinstance(val, str):
                 # Handle flat keys (active paths and backward compat)
+                val = expand_writer(val)
                 p = Path(val)
                 if not p.is_absolute():
                     cfg["lexicon"][key] = str(ai_root / p)
                 else:
                     cfg["lexicon"][key] = str(val)
+
+    if "review" in cfg and isinstance(cfg["review"].get("decisions_path"), str):
+        raw = expand_writer(cfg["review"]["decisions_path"])
+        if raw:
+            path = Path(raw)
+            cfg["review"]["decisions_path"] = str(ai_root / path) if not path.is_absolute() else str(path)
 
     return cfg
 
@@ -483,9 +569,19 @@ def _deep_merge(base: Dict[str, Any], overlay: Dict[str, Any]) -> None:
 
 
 def snap_config(cfg: Dict[str, Any]) -> str:
-    """Serialize config to TOML string for active_config snapshot."""
+    """Serialize configured values without large, runtime-only lexicon payloads.
+
+    ``inject_lexicon`` adds ``_lexicon`` and ``_archive_terms`` for in-memory
+    scoring and auditing.  They are derived from separately versioned local
+    files, not user-supplied configuration, so embedding them makes each run
+    snapshot huge and can unnecessarily duplicate sensitive lexicon content.
+    Paths in ``[lexicon]`` remain in the snapshot for reproducibility.
+    """
+    persisted_config = {
+        key: value for key, value in cfg.items() if not key.startswith("_")
+    }
     lines: List[str] = []
-    _write_toml(lines, "", cfg)
+    _write_toml(lines, "", persisted_config)
     return "\n".join(lines)
 
 
@@ -527,7 +623,7 @@ if __name__ == "__main__":
     cfg = load_config()
     # Test lexicon path resolution
     from pathlib import Path
-    ai_root = Path("D:/AI")
+    ai_root = Path("${WORKSPACE_ROOT}")
     cfg = resolve_paths(cfg, ai_root)
     print("Config loaded OK (v{})".format(cfg.get("meta", {}).get("config_version", "?")))
     print(f"  lexicon paths: {list(cfg.get('lexicon', {}).keys())}")

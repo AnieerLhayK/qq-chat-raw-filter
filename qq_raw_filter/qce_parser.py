@@ -52,7 +52,7 @@ class ParsedMessage:
         "msg_id", "seq", "timestamp_ms", "datetime_obj",
         "sender_uid", "sender_uin", "sender_name", "sender_nickname",
         "text", "msg_type", "is_system", "is_recalled",
-        "raw_type", "elements",
+        "raw_type", "elements", "source_file",
     )
 
     def __init__(
@@ -70,6 +70,7 @@ class ParsedMessage:
         is_recalled: bool = False,
         raw_type: str = "",
         elements: Optional[List[Dict[str, Any]]] = None,
+        source_file: str = "",
     ):
         self.msg_id = msg_id
         self.seq = seq
@@ -85,6 +86,7 @@ class ParsedMessage:
         self.is_recalled = is_recalled
         self.raw_type = raw_type
         self.elements = elements or []
+        self.source_file = source_file
 
     def __repr__(self) -> str:
         return (
@@ -227,6 +229,7 @@ def parse_qce_json(file_path: Path) -> Tuple[List[ParsedMessage], Optional[ChatF
         try:
             pm = _parse_single_message(raw)
             if pm is not None:
+                pm.source_file = str(file_path)
                 messages.append(pm)
         except Exception as e:
             warnings.append(f"{file_path.name}: error parsing message: {e}")
@@ -388,8 +391,11 @@ def is_self(message: ParsedMessage, me_ids: List[str], me_names: List[str]) -> b
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     import os
-    _ai_root = Path(os.environ.get("AI_ROOT", "D:/AI"))
-    test_dir = _ai_root / "raw_material/qq/exports/raw/qq-chat-exporter-live"
+    _ai_root = Path(os.environ.get("AI_ROOT", "${WORKSPACE_ROOT}"))
+    _writer_name = os.environ.get("WRITER_NAME", "").strip()
+    if not _writer_name:
+        raise SystemExit("Set WRITER_NAME before running qce_parser.py directly")
+    test_dir = _ai_root / "raw_material/qq/exports" / f"character.{_writer_name}" / "raw/qq-chat-exporter-live"
     msgs, infos, warns = load_all_files(test_dir, limit_files=2)
     print(f"Parsed {len(msgs)} messages from {len(infos)} files")
     print(f"Warnings: {len(warns)}")

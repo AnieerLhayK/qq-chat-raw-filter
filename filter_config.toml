@@ -6,9 +6,12 @@ description = "QQ character skill raw material filter config — archive + audit
 me_ids = []
 me_names = []
 
+[character]
+writer_name = "zf"
+
 [path]
-input_dir = "raw_material/qq/exports/raw/qq-chat-exporter-live"
-output_dir = "raw_material/qq/exports/normalized"
+input_dir = "raw_material/qq/exports/character.{writer_name}/raw/qq-chat-exporter-live"
+output_dir = "raw_material/qq/exports/character.{writer_name}/normalized"
 
 [time]
 session_gap_minutes = 20
@@ -50,7 +53,7 @@ max_chaos_ratio_for_candidate = 0.20
 max_other_char_ratio_inside_my_block = 0.30
 
 [dedup]
-duplicate_keep_limit = 3
+duplicate_keep_limit = 2
 near_duplicate_enable = false
 near_duplicate_threshold = 0.85
 
@@ -65,6 +68,10 @@ human_review_sample_size = 100
 [debatable]
 enable = true
 max_per_run = 200
+
+[review]
+decisions_path = "raw_material/qq/exports/character.{writer_name}/lexicons/review_decisions.jsonl"
+sample_seed = 20260710
 
 [tuning_advice]
 enable = true
@@ -85,26 +92,26 @@ chaos_style_ratio_max = 0.10
 # - [lexicon.audit] = frequency audit configuration
 
 [lexicon]
-phrase_bank_path = "raw_material/qq/exports/lexicons/phrase_bank.jsonl"
-phrase_candidates_path = "raw_material/qq/exports/lexicons/phrase_candidates.jsonl"
-phrase_stoplist_path = "raw_material/qq/exports/lexicons/phrase_stoplist.txt"
-privacy_lexicon_path = "raw_material/qq/exports/lexicons/privacy_lexicon.jsonl"
-chaos_lexicon_path = "raw_material/qq/exports/lexicons/chaos_lexicon.jsonl"
-drop_sentence_words_path = "raw_material/qq/exports/lexicons/drop_sentence_words.jsonl"
-mask_words_path = "raw_material/qq/exports/lexicons/mask_words.jsonl"
-manual_keep_path = "raw_material/qq/exports/lexicons/manual_keep.jsonl"
-manual_drop_path = "raw_material/qq/exports/lexicons/manual_drop.jsonl"
+phrase_bank_path = "raw_material/qq/exports/character.{writer_name}/lexicons/phrase_bank.jsonl"
+phrase_candidates_path = "raw_material/qq/exports/character.{writer_name}/lexicons/phrase_candidates.jsonl"
+phrase_stoplist_path = "raw_material/qq/exports/character.{writer_name}/lexicons/phrase_stoplist.txt"
+privacy_lexicon_path = "raw_material/qq/exports/character.{writer_name}/lexicons/privacy_lexicon.jsonl"
+chaos_lexicon_path = "raw_material/qq/exports/character.{writer_name}/lexicons/chaos_lexicon.jsonl"
+drop_sentence_words_path = "raw_material/qq/exports/character.{writer_name}/lexicons/drop_sentence_words.jsonl"
+mask_words_path = "raw_material/qq/exports/character.{writer_name}/lexicons/mask_words.jsonl"
+manual_keep_path = "raw_material/qq/exports/character.{writer_name}/lexicons/manual_keep.jsonl"
+manual_drop_path = "raw_material/qq/exports/character.{writer_name}/lexicons/manual_drop.jsonl"
 
 [lexicon.archive]
-phrase_bank_path = "raw_material/qq/exports/lexicons/archive/phrase_bank_archive.jsonl"
-phrase_candidates_path = "raw_material/qq/exports/lexicons/archive/phrase_candidates_archive.jsonl"
-phrase_stoplist_path = "raw_material/qq/exports/lexicons/archive/phrase_stoplist_archive.txt"
-privacy_lexicon_path = "raw_material/qq/exports/lexicons/archive/privacy_lexicon_archive.jsonl"
-chaos_lexicon_path = "raw_material/qq/exports/lexicons/archive/chaos_lexicon_archive.jsonl"
-drop_sentence_words_path = "raw_material/qq/exports/lexicons/archive/drop_sentence_words_archive.jsonl"
-mask_words_path = "raw_material/qq/exports/lexicons/archive/mask_words_archive.jsonl"
-manual_keep_path = "raw_material/qq/exports/lexicons/archive/manual_keep_archive.jsonl"
-manual_drop_path = "raw_material/qq/exports/lexicons/archive/manual_drop_archive.jsonl"
+phrase_bank_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/phrase_bank_archive.jsonl"
+phrase_candidates_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/phrase_candidates_archive.jsonl"
+phrase_stoplist_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/phrase_stoplist_archive.txt"
+privacy_lexicon_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/privacy_lexicon_archive.jsonl"
+chaos_lexicon_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/chaos_lexicon_archive.jsonl"
+drop_sentence_words_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/drop_sentence_words_archive.jsonl"
+mask_words_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/mask_words_archive.jsonl"
+manual_keep_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/manual_keep_archive.jsonl"
+manual_drop_path = "raw_material/qq/exports/character.{writer_name}/lexicons/archive/manual_drop_archive.jsonl"
 
 [lexicon.audit]
 enabled = true
@@ -125,7 +132,7 @@ min_pmi_3gram = 3.0
 min_pmi_4gram = 4.0
 min_entropy = 0.5
 top_k_each_length = 500
-scan_sources = ["my_text", "fragments", "my_blocks"]
+scan_sources = ["my_text"]
 
 [phrase_mining.bucket_weight]
 candidates = 1.0
@@ -139,12 +146,26 @@ enabled = true
 compare_candidates_against_rejected = true
 min_keyness = 1.5
 
+[phrase_mining.clustering]
+enabled = true
+min_surface_overlap = 0.5
+
 [phrase_mining.output]
 write_phrase_freq_by_length = true
 write_phrase_candidates = true
 write_phrase_report = true
-update_auto_phrase_candidates = true
+update_auto_phrase_candidates = false
 update_phrase_bank = false
+
+[phrase_mining.auto_promote]
+enabled = false
+min_style_keyness = 3.0
+min_pmi = 3.0
+min_entropy = 1.0
+min_freq = 10
+max_chaos_rate = 0.15
+max_privacy_rate = 0.15
+max_per_run = 30
 
 # ---------------------------------------------------------------------------
 # Inline filter lists — migrated to lexicons/ in v0.2

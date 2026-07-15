@@ -202,7 +202,14 @@ def mine_phrases(
     scan_sources = pm_cfg.get("scan_sources", ["my_text"])
 
     bucket_weight = pm_cfg.get("bucket_weight", {})
+    keyness_cfg = pm_cfg.get("keyness", {})
+    keyness_enabled = keyness_cfg.get("enabled", True)
+    compare_against_rejected = keyness_cfg.get("compare_candidates_against_rejected", True)
+    min_keyness = keyness_cfg.get("min_keyness", 1.5)
     stoplist = lexicon.get("phrase_stoplist", set())
+    manual_keep_phrases = lexicon.get("manual_keep_phrases", set())
+    manual_drop_phrases = lexicon.get("manual_drop_phrases", set())
+    stoplist_filtered_phrases: Set[str] = set()
 
     # Build bucket -> blocks mapping (ensure candidates always exists)
     bucket_blocks: Dict[str, List[MyBlock]] = dict(bucketed) if bucketed else {}
@@ -270,6 +277,10 @@ def mine_phrases(
             if freq < min_freq:
                 continue
             if phrase in stoplist:
+                if freq >= min_freq:
+                    stoplist_filtered_phrases.add(phrase)
+                continue
+            if phrase in manual_drop_phrases:
                 continue
 
             # Bucket frequencies
@@ -321,15 +332,22 @@ def mine_phrases(
             weighted_micro = micro_count * bucket_weight.get("micro_style", 1.2)
             weighted_chaos = chaos_count * bucket_weight.get("chaos_style", 0.5)
             weighted_priv = priv_count * bucket_weight.get("need_anonymize", 0.4)
-            weighted_rej = rej_count * bucket_weight.get("rejected", -0.5)
+            # A negative rejected weight in old configs meant "penalize", but
+            # the previous max(0, value) erased it.  Use its magnitude as a
+            # real penalty while retaining compatibility with that notation.
+            rejected_penalty = rej_count * abs(bucket_weight.get("rejected", -0.5))
 
             # Style keyness: how much this phrase characterises "good" buckets
             good_weight = weighted_candidate + weighted_micro
-            bad_weight = weighted_chaos + weighted_priv + max(0, weighted_rej)
-            if bad_weight <= 0:
-                style_keyness = good_weight / max(1, total_in_buckets * 0.1) * 2
+            bad_weight = weighted_chaos + weighted_priv
+            if compare_against_rejected:
+                bad_weight += rejected_penalty
+            if keyness_enabled:
+                # Additive smoothing prevents a phrase with one lucky hit and
+                # no negative evidence from appearing infinitely distinctive.
+                style_keyness = (good_weight + 0.5) / (bad_weight + 0.5)
             else:
-                style_keyness = good_weight / max(1, bad_weight)
+                style_keyness = good_weight / max(1, total_in_buckets)
 
             chaos_rate = chaos_count / max(1, total_in_buckets)
             privacy_rate = priv_count / max(1, total_in_buckets)
@@ -339,22 +357,26 @@ def mine_phrases(
                 suggested_label = "chaos_phrase"
             elif privacy_rate > 0.3:
                 suggested_label = "privacy_phrase"
-            elif style_keyness > 2.0:
+            elif keyness_enabled and style_keyness >= min_keyness:
                 suggested_label = "candidate_style_phrase"
             else:
                 suggested_label = "ambiguous_phrase"
 
+            reasons = []
+
             # Suggested action
-            if chaos_rate > 0.7 or (rej_count > c_count and freq < 10):
+            if phrase in manual_keep_phrases:
+                suggested_action = "manual_keep"
+                reasons.append("manual_phrase_keep")
+            elif chaos_rate > 0.7 or (rej_count > c_count and freq < 10):
                 suggested_action = "skip"
             elif privacy_rate > 0.4:
                 suggested_action = "privacy_review"
-            elif style_keyness > 1.5 and chaos_rate < 0.3:
+            elif (not keyness_enabled or style_keyness >= min_keyness) and chaos_rate < 0.3:
                 suggested_action = "review"
             else:
-                suggested_action = "review"
+                suggested_action = "review_low_keyness"
 
-            reasons = []
             if c_count > 0 and rej_count == 0:
                 reasons.append("high_candidate_frequency")
             if c_count > rej_count * 2 and rej_count > 0:
@@ -430,9 +452,7 @@ def mine_phrases(
         "privacy_candidates": len(review_privacy),
         "chaos_candidates": len(review_chaos),
         "stopword_candidates": len(review_stopwords),
-        "stoplist_filtered": len([p for p in stoplist if any(
-            s.phrase == p for n in range(min_n, max_n + 1) for s in all_candidates[n]
-        )]),
+        "stoplist_filtered": len(stoplist_filtered_phrases),
     }
 
     return {
@@ -442,7 +462,7 @@ def mine_phrases(
         "phrase_candidates": [
             _asdict(s) for n in range(min_n, max_n + 1)
             for s in all_candidates[n]
-            if s.suggested_action in ("review",)
+            if s.suggested_action in ("review", "manual_keep")
         ],
         "stats": stats,
         "review_phrases_top": [_asdict(s) for s in review_top[:100]],

@@ -9,13 +9,12 @@ from __future__ import annotations
 
 import json
 import logging
-import random
 import sys
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 from qq_raw_filter.config_loader import snap_config
 from qq_raw_filter.qce_parser import load_all_files, is_self
@@ -29,7 +28,9 @@ from qq_raw_filter.style_tagger import tag_style
 from qq_raw_filter.review_sampler import write_stratified_samples
 from qq_raw_filter.tuning_advice import generate_tuning_advice
 from qq_raw_filter.phrase_miner import mine_phrases, generate_phrase_report
+from qq_raw_filter.phrase_cluster import cluster_phrase_candidates
 from qq_raw_filter.lexicon_auditor import audit_legacy_lexicon
+from qq_raw_filter.review_feedback import attach_review_ids, apply_block_review_decisions
 
 logger = logging.getLogger(__name__)
 
@@ -71,12 +72,20 @@ def stage_parse_files(ctx: Dict[str, Any]) -> StageResult:
 
     ctx["messages"] = messages
     ctx["file_infos"] = file_infos
+    message_groups: Dict[str, List[Any]] = {}
+    for message in messages:
+        source_file = message.source_file
+        if not source_file:
+            raise PipelineAbortError("Parsed message is missing source_file provenance")
+        message_groups.setdefault(source_file, []).append(message)
+    ctx["message_groups"] = message_groups
 
     return StageResult(
         name="parse_files",
         counts={"files_found": len(file_infos) + len(warnings),
                 "files_parsed": len(file_infos),
-                "total_messages": len(messages)},
+                "total_messages": len(messages),
+                "source_groups": len(message_groups)},
         warnings=warnings,
     )
 
@@ -102,57 +111,123 @@ def stage_normalize_messages(ctx: Dict[str, Any]) -> StageResult:
 
 
 def stage_merge_turns(ctx: Dict[str, Any]) -> StageResult:
-    """Merge consecutive messages from the same speaker into turns."""
+    """Merge messages into turns independently for each source chat file."""
     from qq_raw_filter.block_builder import messages_to_turns
 
-    messages = ctx.get("messages", [])
+    message_groups = ctx.get("message_groups", {})
     cfg = ctx["config"]
     me_ids = cfg.get("identity", {}).get("me_ids", [])
     me_names = cfg.get("identity", {}).get("me_names", [])
     turn_gap = cfg.get("time", {}).get("turn_gap_seconds", 90)
 
-    turns, warnings = messages_to_turns(messages, me_ids, me_names, turn_gap)
-    ctx["turns"] = turns
+    turn_groups: Dict[str, List[Any]] = {}
+    warnings: List[str] = []
+    for source_file, messages in message_groups.items():
+        turns, group_warnings = messages_to_turns(messages, me_ids, me_names, turn_gap)
+        turn_groups[source_file] = turns
+        warnings.extend(group_warnings)
+    ctx["turn_groups"] = turn_groups
+    ctx["turns"] = [turn for turns in turn_groups.values() for turn in turns]
 
     return StageResult(
         name="merge_turns",
-        counts={"turns": len(turns)},
+        counts={"turns": len(ctx["turns"]), "source_groups": len(turn_groups)},
         warnings=warnings,
     )
 
 
 def stage_split_sessions(ctx: Dict[str, Any]) -> StageResult:
-    """Split turns into sessions based on time gaps."""
+    """Split each source chat file's turns into independent sessions."""
     from qq_raw_filter.block_builder import turns_to_sessions
 
-    turns = ctx.get("turns", [])
+    turn_groups = ctx.get("turn_groups", {})
     cfg = ctx["config"]
     session_gap = cfg.get("time", {}).get("session_gap_minutes", 20)
-    source_file = ""
-
-    sessions = turns_to_sessions(turns, source_file, session_gap)
-    ctx["sessions"] = sessions
+    session_groups: Dict[str, List[Any]] = {}
+    for source_file, turns in turn_groups.items():
+        session_groups[source_file] = turns_to_sessions(turns, source_file, session_gap)
+    ctx["session_groups"] = session_groups
+    ctx["sessions"] = [session for sessions in session_groups.values() for session in sessions]
 
     return StageResult(
         name="split_sessions",
-        counts={"sessions": len(sessions)},
+        counts={"sessions": len(ctx["sessions"]), "source_groups": len(session_groups)},
     )
 
 
 def stage_extract_my_blocks(ctx: Dict[str, Any]) -> StageResult:
-    """Extract my_blocks from sessions using interruption rules."""
+    """Extract source-namespaced my_blocks without crossing chat boundaries."""
     from qq_raw_filter.block_builder import extract_my_blocks
 
-    sessions = ctx.get("sessions", [])
+    session_groups = ctx.get("session_groups", {})
     cfg = ctx["config"]
 
-    blocks, warnings = extract_my_blocks(sessions, cfg)
+    blocks: List[MyBlock] = []
+    warnings: List[str] = []
+    for source_index, (source_file, sessions) in enumerate(session_groups.items()):
+        group_blocks, group_warnings = extract_my_blocks(
+            sessions, cfg, block_id_prefix=f"source_{source_index:04d}_"
+        )
+        blocks.extend(group_blocks)
+        warnings.extend(group_warnings)
     ctx["blocks"] = blocks
 
     return StageResult(
         name="extract_my_blocks",
-        counts={"my_blocks": len(blocks)},
+        counts={"my_blocks": len(blocks), "source_groups": len(session_groups)},
         warnings=warnings,
+    )
+
+
+def stage_pre_bucket_structural(ctx: Dict[str, Any]) -> StageResult:
+    """Create a rough structural-only bucket assignment for phrase-mining keyness.
+
+    Uses only character counts, turn counts, and fragment ratios — no lexicon
+    lookups.  This provides enough signal for mine_phrases() to distinguish
+    "good" blocks from "noise" blocks without depending on the final scoring
+    pass (which itself depends on the lexicon we are trying to improve).
+
+    The pre-buckets are intentionally coarse; their only purpose is to feed
+    bucket-aware keyness calculation in the phrase mining stage.  The final
+    bucket_decision stage later produces the authoritative buckets.
+    """
+    blocks = ctx.get("blocks", [])
+    cfg = ctx["config"]
+
+    good_chars = cfg.get("my_block", {}).get("good_my_block_chars", 100)
+    min_chars = cfg.get("my_block", {}).get("min_my_block_chars", 20)
+    max_sf = cfg.get("ratio", {}).get("max_short_fragment_ratio", 0.70)
+
+    bucketed: Dict[str, List[Any]] = {
+        "candidates": [],
+        "micro_style": [],
+        "chaos_style": [],
+        "need_anonymize": [],
+        "rejected": [],
+    }
+
+    for block in blocks:
+        chars = block.metrics.get("my_char_count", 0)
+        turns = block.metrics.get("my_turn_count", 0)
+        sf_ratio = block.metrics.get("short_fragment_ratio", 0)
+
+        # Long, multi-turn, coherent → likely good content
+        if chars >= good_chars and turns >= 3 and sf_ratio <= max_sf:
+            bucketed["candidates"].append(block)
+        # Medium length → micro_style
+        elif chars >= min_chars:
+            bucketed["micro_style"].append(block)
+        # Very short or highly fragmented → likely noise
+        elif chars < 10 or sf_ratio > 0.8:
+            bucketed["rejected"].append(block)
+        # Everything else → need_anonymize (neutral)
+        else:
+            bucketed["need_anonymize"].append(block)
+
+    ctx["pre_buckets"] = bucketed
+    return StageResult(
+        name="pre_bucket_structural",
+        counts={k: len(v) for k, v in bucketed.items()},
     )
 
 
@@ -168,6 +243,13 @@ def stage_score_blocks(ctx: Dict[str, Any]) -> StageResult:
         name="score_blocks",
         counts={"scored": len(blocks)},
     )
+
+
+def stage_attach_review_ids(ctx: Dict[str, Any]) -> StageResult:
+    """Attach stable local IDs before privacy masking changes visible text."""
+    blocks = ctx.get("blocks", [])
+    attach_review_ids(blocks)
+    return StageResult(name="attach_review_ids", counts={"review_ids": len(blocks)})
 
 
 def stage_privacy_filter(ctx: Dict[str, Any]) -> StageResult:
@@ -188,8 +270,13 @@ def stage_deduplicate(ctx: Dict[str, Any]) -> StageResult:
     blocks = ctx.get("blocks", [])
     cfg = ctx["config"]
 
-    keep_limit = cfg.get("dedup", {}).get("duplicate_keep_limit", 3)
-    n_removed, hashes = dedup_blocks(blocks, keep_limit)
+    dedup_cfg = cfg.get("dedup", {})
+    n_removed, hashes = dedup_blocks(
+        blocks,
+        dedup_cfg.get("duplicate_keep_limit", 3),
+        dedup_cfg.get("near_duplicate_enable", False),
+        dedup_cfg.get("near_duplicate_threshold", 0.85),
+    )
     ctx["seen_hashes"] = hashes
 
     return StageResult(
@@ -226,6 +313,14 @@ def stage_apply_filters(ctx: Dict[str, Any]) -> StageResult:
         name="apply_filters",
         counts={"dropped_by_blocklist": dropped, "words_masked": n_masked},
     )
+
+
+def stage_apply_review_decisions(ctx: Dict[str, Any]) -> StageResult:
+    """Apply local reviewer labels without bypassing earlier safety filters."""
+    blocks = ctx.get("blocks", [])
+    decisions = ctx.get("config", {}).get("_lexicon", {}).get("review_decisions", {})
+    counts = apply_block_review_decisions(blocks, decisions)
+    return StageResult(name="apply_review_decisions", counts=counts)
 
 
 def stage_bucket_decision(ctx: Dict[str, Any]) -> StageResult:
@@ -378,10 +473,11 @@ def stage_write_review_samples(ctx: Dict[str, Any]) -> StageResult:
         return StageResult(name="write_review_samples", counts={})
 
     sample_size = cfg.get("output", {}).get("human_review_sample_size", 100)
+    sample_seed = cfg.get("review", {}).get("sample_seed", 20260710)
     review_dir = run_dir / "review_samples"
     review_dir.mkdir(exist_ok=True)
 
-    n_written = write_stratified_samples(bucketed, review_dir, sample_size)
+    n_written = write_stratified_samples(bucketed, review_dir, sample_size, sample_seed)
 
     return StageResult(
         name="write_review_samples",
@@ -392,12 +488,14 @@ def stage_write_review_samples(ctx: Dict[str, Any]) -> StageResult:
 def stage_mine_phrases(ctx: Dict[str, Any]) -> StageResult:
     """Run phrase mining on all blocks to discover 2-4 char n-gram candidates.
 
-    Uses the bucket classification from the bucket_decision stage to compute
-    bucket-aware metrics (style_keyness, chaos_rate, privacy_bucket_rate).
+    When *pre_buckets* is available (from stage_pre_bucket_structural) it is
+    preferred for bucket-aware keyness calculation; otherwise falls back to
+    the final *buckets* from bucket_decision for backward compatibility.
+
     Writes review files and a human-readable report to the run directory.
     """
     blocks = ctx.get("blocks", [])
-    bucketed = ctx.get("buckets", {})
+    bucketed = ctx.get("pre_buckets") or ctx.get("buckets", {})
     cfg = ctx["config"]
     lexicon = cfg.get("_lexicon", {})
     run_dir = ctx.get("run_dir")
@@ -428,6 +526,16 @@ def stage_mine_phrases(ctx: Dict[str, Any]) -> StageResult:
             candidates = mining_result.get("phrase_candidates", [])
             if candidates:
                 _write_jsonl(candidates, pm_dir / "phrase_candidates.jsonl")
+
+        clustering_cfg = pm_cfg.get("clustering", {})
+        if clustering_cfg.get("enabled", True):
+            clusters = cluster_phrase_candidates(
+                mining_result.get("phrase_candidates", []),
+                clustering_cfg.get("min_surface_overlap", 0.5),
+            )
+            ctx["phrase_clusters"] = clusters
+            if clusters:
+                _write_jsonl(clusters, pm_dir / "phrase_clusters.jsonl")
 
         # Write review files
         for name in ("review_phrases_top", "review_privacy_terms", "review_chaos_terms", "review_stopword_candidates"):
@@ -482,7 +590,80 @@ def stage_mine_phrases(ctx: Dict[str, Any]) -> StageResult:
             "privacy_candidates": stats.get("privacy_candidates", 0),
             "chaos_candidates": stats.get("chaos_candidates", 0),
             "stopword_candidates": stats.get("stopword_candidates", 0),
+            "phrase_clusters": len(ctx.get("phrase_clusters", [])),
         },
+    )
+
+
+def stage_auto_promote_phrases(ctx: Dict[str, Any]) -> StageResult:
+    """Auto-promote high-confidence mined phrases into the in-memory active lexicon.
+
+    Runs after mine_phrases and before score_blocks so newly discovered phrases
+    participate in scoring immediately.  Only phrases that meet ALL conservative
+    thresholds are promoted — false positives are worse than missed discoveries.
+
+    Promoted phrases are injected into config["_lexicon"]["analysis_markers"]
+    which is the list consumed by scorer.score_style().  The promotion is
+    in-memory only and does not persist to disk (use generate_active_lexicon.py
+    for that).
+
+    Thresholds are read from [phrase_mining.auto_promote] in the TOML config.
+    """
+    mining_result = ctx.get("phrase_mining", {})
+    if not mining_result or not mining_result.get("enabled", True):
+        return StageResult(name="auto_promote_phrases", counts={"promoted": 0})
+
+    cfg = ctx["config"]
+    ap_cfg = cfg.get("phrase_mining", {}).get("auto_promote", {})
+    if not ap_cfg.get("enabled", True):
+        return StageResult(name="auto_promote_phrases", counts={"enabled": 0})
+
+    candidates = mining_result.get("phrase_candidates", [])
+    if not candidates:
+        return StageResult(name="auto_promote_phrases", counts={"promoted": 0})
+
+    min_keyness = ap_cfg.get("min_style_keyness", 3.0)
+    min_pmi = ap_cfg.get("min_pmi", 3.0)
+    min_entropy = ap_cfg.get("min_entropy", 1.0)
+    min_freq = ap_cfg.get("min_freq", 10)
+    max_chaos = ap_cfg.get("max_chaos_rate", 0.15)
+    max_privacy = ap_cfg.get("max_privacy_rate", 0.15)
+    max_count = ap_cfg.get("max_per_run", 30)
+
+    lex = cfg.get("_lexicon", {})
+    existing_phrases: Set[str] = set(lex.get("analysis_markers", []))
+    existing_phrases.update(lex.get("tone_markers", []))
+
+    promoted: List[Dict[str, Any]] = []
+    for c in candidates:
+        if len(promoted) >= max_count:
+            break
+        phrase = str(c.get("phrase", "")).strip()
+        if not phrase or phrase in existing_phrases:
+            continue
+        if (c.get("style_keyness", 0) >= min_keyness
+                and c.get("min_pmi", 0) >= min_pmi
+                and c.get("min_entropy", 0) >= min_entropy
+                and c.get("freq", 0) >= min_freq
+                and c.get("chaos_rate", 0) <= max_chaos
+                and c.get("privacy_bucket_rate", 0) <= max_privacy):
+            promoted.append(c)
+            existing_phrases.add(phrase)
+
+    if promoted:
+        lex["analysis_markers"] = list(lex.get("analysis_markers", []))
+        lex["analysis_markers"].extend(c["phrase"] for c in promoted)
+        logger.info(
+            "Auto-promoted %d phrases to active lexicon: %s",
+            len(promoted),
+            ", ".join(c["phrase"] for c in promoted[:10]),
+        )
+
+    ctx["auto_promoted_phrases"] = promoted
+    return StageResult(
+        name="auto_promote_phrases",
+        counts={"promoted": len(promoted)},
+        trace={"phrases": [c["phrase"] for c in promoted]},
     )
 
 
@@ -497,14 +678,18 @@ PIPELINE = [
     ("merge_turns", stage_merge_turns),
     ("split_sessions", stage_split_sessions),
     ("extract_my_blocks", stage_extract_my_blocks),
+    ("pre_bucket_structural", stage_pre_bucket_structural),
+    ("mine_phrases", stage_mine_phrases),
+    ("auto_promote_phrases", stage_auto_promote_phrases),
     ("score_blocks", stage_score_blocks),
+    ("attach_review_ids", stage_attach_review_ids),
     ("privacy_filter", stage_privacy_filter),
     ("deduplicate", stage_deduplicate),
     ("apply_filters", stage_apply_filters),
+    ("apply_review_decisions", stage_apply_review_decisions),
     ("bucket_decision", stage_bucket_decision),
     ("audit_legacy_lexicon", stage_audit_legacy_lexicon),
     ("tag_style", stage_tag_style),
-    ("mine_phrases", stage_mine_phrases),
     ("write_outputs", stage_write_outputs),
     ("write_review_samples", stage_write_review_samples),
 ]
