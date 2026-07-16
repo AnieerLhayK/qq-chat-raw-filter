@@ -1,43 +1,26 @@
 #!/usr/bin/env python3
 """Validate a public qq-chat-raw-filter projection."""
-
 from __future__ import annotations
 
 import argparse
 import re
-import sys
 from pathlib import Path
 
-REQUIRED_PATHS = {
-    "README.md",
-    ".github/workflows/ci.yml",
-    "pyproject.toml",
-    "qce_block_filter.py",
-    "qq_raw_filter/__init__.py",
-    "tests/test_public_smoke.py",
-}
-FORBIDDEN_PARTS = {
-    "__pycache__",
-    ".pytest_cache",
-    ".mypy_cache",
-    ".ruff_cache",
-    "corpus",
-    "output",
-}
-FORBIDDEN_PATTERNS = [
-    re.compile(r"D:[\\/]+AI", re.IGNORECASE),
-    re.compile(r"C:[\\/]+Users", re.IGNORECASE),
-]
-TEXT_SUFFIXES = {".json", ".md", ".py", ".txt", ".toml", ".yaml", ".yml", ".gitignore"}
-
+REQUIRED_PATHS = {'tests/test_public_smoke.py', '.github/workflows/ci.yml', 'pyproject.toml', 'qce_block_filter.py', 'README.md', 'qq_raw_filter/__init__.py'}
+FORBIDDEN_PARTS = {'__pycache__', 'output', '.ruff_cache', 'corpus', '.mypy_cache', '.pytest_cache'}
+FORBIDDEN_PATTERNS = ['D:[\\\\/]+AI', 'C:[\\\\/]+Users']
+FORBIDDEN_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in FORBIDDEN_PATTERNS]
+TEXT_SUFFIXES = {'.md', '.yaml', '.json', '.toml', '.py', '.txt', '.yml', '.gitignore'}
 
 def is_text(path: Path) -> bool:
     return path.name == ".gitignore" or path.suffix.lower() in TEXT_SUFFIXES
 
-
 def check_required(root: Path) -> list[str]:
-    return [f"Missing required path: {rel}" for rel in sorted(REQUIRED_PATHS) if not (root / rel).is_file()]
-
+    return [
+        f"Missing required path: {rel}"
+        for rel in sorted(REQUIRED_PATHS)
+        if not (root / rel).is_file()
+    ]
 
 def check_forbidden_paths(root: Path) -> list[str]:
     issues = []
@@ -45,12 +28,12 @@ def check_forbidden_paths(root: Path) -> list[str]:
         if not path.is_dir():
             continue
         rel = path.relative_to(root).as_posix()
-        if any(part in FORBIDDEN_PARTS for part in path.relative_to(root).parts):
+        parts = path.relative_to(root).parts
+        if any(part in FORBIDDEN_PARTS for part in parts):
             issues.append(f"Forbidden path exists: {rel}")
-        if any(part.endswith(".egg-info") for part in path.relative_to(root).parts):
+        if any(part.endswith(".egg-info") for part in parts):
             issues.append(f"Forbidden build metadata exists: {rel}")
     return sorted(set(issues))
-
 
 def check_text(root: Path) -> list[str]:
     issues = []
@@ -67,7 +50,6 @@ def check_text(root: Path) -> list[str]:
                 line = text[: match.start()].count("\n") + 1
                 issues.append(f"{rel}:{line}: forbidden text matched {pattern.pattern!r}")
     return issues
-
 
 def main() -> int:
     parser = argparse.ArgumentParser()

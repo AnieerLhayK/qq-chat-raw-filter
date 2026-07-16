@@ -131,11 +131,16 @@ def test_character_writer_name_resolves_all_scoped_paths() -> None:
 
     resolved = resolve_paths(cfg, Path("${WORKSPACE_ROOT}"))
 
-    assert resolved["path"]["input_dir"].endswith(
-        "raw_material\\qq\\exports\\character.writerA\\raw\\qq-chat-exporter-live"
+    # The public projection is tested on Linux while the source workspace is
+    # Windows. Compare normalized path separators so this remains a path test,
+    # rather than an operating-system test.
+    input_dir = resolved["path"]["input_dir"].replace("\\", "/")
+    phrase_bank_path = resolved["lexicon"]["phrase_bank_path"].replace("\\", "/")
+    assert input_dir.endswith(
+        "raw_material/qq/exports/character.writerA/raw/qq-chat-exporter-live"
     )
-    assert resolved["lexicon"]["phrase_bank_path"].endswith(
-        "raw_material\\qq\\exports\\character.writerA\\lexicons\\phrase_bank.jsonl"
+    assert phrase_bank_path.endswith(
+        "raw_material/qq/exports/character.writerA/lexicons/phrase_bank.jsonl"
     )
 
 
