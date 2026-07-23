@@ -6,11 +6,11 @@ import argparse
 import re
 from pathlib import Path
 
-REQUIRED_PATHS = {'README.md', 'pyproject.toml', '.github/workflows/ci.yml', 'qq_raw_filter/__init__.py', 'tests/test_public_smoke.py', 'qce_block_filter.py'}
-FORBIDDEN_PARTS = {'.ruff_cache', 'output', '__pycache__', '.pytest_cache', '.mypy_cache', 'corpus'}
+REQUIRED_PATHS = {'README.md', 'qq_raw_filter/__init__.py', 'pyproject.toml', '.github/workflows/ci.yml', 'qce_block_filter.py', 'tests/test_public_smoke.py'}
+FORBIDDEN_PARTS = {'.mypy_cache', '.ruff_cache', '.pytest_cache', 'output', 'corpus', '__pycache__'}
 FORBIDDEN_PATTERNS = ['D:[\\\\/]+AI', 'C:[\\\\/]+Users']
 FORBIDDEN_PATTERNS = [re.compile(pattern, re.IGNORECASE) for pattern in FORBIDDEN_PATTERNS]
-TEXT_SUFFIXES = {'.py', '.json', '.toml', '.yaml', '.gitignore', '.txt', '.yml', '.md'}
+TEXT_SUFFIXES = {'.yaml', '.toml', '.py', '.yml', '.txt', '.md', '.gitignore', '.json'}
 
 def is_text(path: Path) -> bool:
     return path.name == ".gitignore" or path.suffix.lower() in TEXT_SUFFIXES
