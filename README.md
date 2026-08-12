@@ -44,7 +44,7 @@ QQ Chat Exporter           QQ Chat Raw Material Filter       Character Skill
 | **源代码来源** | 来自 workspace `packages/character-system/engineering/corpus-preparation/qq-raw-material-filter/` 的公开投影 |
 | **本地仓库** | ❌ 不在本地单独 `git clone`，不建立本地独立仓库 |
 | **远端维护** | ✅ 仅在此远端仓库 (`qq-chat-raw-filter`) 发布，workspace 是唯一源代码来源 |
-| **同步命令** | `python scripts/sync_qq_raw_filter_repo.py --record-id TASK-YYYYMMDD-### --push` |
+| **同步命令** | `python -m scripts.publishing.sync_qq_raw_filter_repo --record-id TASK-YYYYMMDD-### --push` |
 | **反向同步** | 不反向（远端修改不在工作区内使用） |
 
 ### 为什么这样设计
@@ -57,7 +57,7 @@ QQ Chat Exporter           QQ Chat Raw Material Filter       Character Skill
 
 1. 在 workspace 本地修改 `packages/character-system/engineering/corpus-preparation/qq-raw-material-filter/` 下的代码
 2. 提交到 workspace 仓库（feature 分支）
-3. 创建声明了 `external_write` 的活动任务记录；合并到 `main` 后执行 `python scripts/sync_qq_raw_filter_repo.py --record-id TASK-YYYYMMDD-### --push` 同步到此远端
+3. 创建声明了 `external_write` 的活动任务记录；合并到 `main` 后执行 `python -m scripts.publishing.sync_qq_raw_filter_repo --record-id TASK-YYYYMMDD-### --push` 同步到此远端
 
 ---
 
