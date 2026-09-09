@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "source_revision": "00dbd1f9f50f87ef1b80e6b58c15a9aca6deb881",
+  "source_revision": "de4c2ad168a184d227ae3216e2766676ce50445b",
   "publisher": "scripts/publishing/sync_qq_raw_filter_repo.py",
   "generator": "scripts/publishing/publish_qq_raw_filter.py"
 }
