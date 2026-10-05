@@ -1,3 +1,13 @@
+> **Archived / 已归档**
+
+This repository has moved into [https://github.com/AnieerLhayK/Chatty-Ch-System](https://github.com/AnieerLhayK/Chatty-Ch-System). The maintained filter now lives at `packages/character-system/engineering/corpus-preparation/qq-raw-material-filter/` in that system. Future code, documentation and maintenance updates are published there. The `qce-block-filter` command and direct Python script entry remain available; preparing generator input still requires the documented manual handoff.
+
+本仓库已迁入 [Chatty-Ch-System](https://github.com/AnieerLhayK/Chatty-Ch-System)，后续代码、文档与维护更新统一在该系统内发布。filter 位于上述 package 路径，命令及直接脚本入口保留；过滤结果到 generator 的人工交接要求保持不变。本仓库停止独立维护并归档，保留原有历史、分支、PR 和 issue。
+
+The original README below is retained as historical documentation. / 以下原 README 作为历史文档保留。
+
+---
+
 # QQ Chat Raw Material Filter
 
 <div align="center">
